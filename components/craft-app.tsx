@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, ArrowUpRight, Bookmark, ChevronDown, ChevronRight, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, Heart, Image as ImageIcon, Images, LayoutTemplate, LogOut, MoonStar, MoreHorizontal, Package, Pause, Pencil, Play, Plus, Quote, Ruler, Scissors, Search, Share2, Shapes, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, ArrowUpRight, Bookmark, ChevronDown, ChevronRight, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, Heart, Image as ImageIcon, Images, LayoutTemplate, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Pause, Pencil, Play, Plus, Quote, Ruler, Scissors, Search, Share2, Shapes, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { gsap } from "gsap";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from "@/components/ui/carousel";
@@ -767,6 +767,7 @@ function TemplateFeed(props: {
   const [sheetTemplate, setSheetTemplate] = useState<Template | null>(null);
   const [subscriptionTemplate, setSubscriptionTemplate] = useState<Template | null>(null);
   const [cardFeedback, setCardFeedback] = useState<CardFeedback | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const gesturePointerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -838,8 +839,14 @@ function TemplateFeed(props: {
       void props.interactions.toggleLike(selectedTemplate.id);
     }
     if (action === "download") {
-      if (props.subscribed) void downloadTemplate(selectedTemplate);
-      else setSubscriptionTemplate(selectedTemplate);
+      if (props.subscribed) {
+        setDownloadingId(selectedTemplate.id);
+        void downloadTemplate(selectedTemplate).finally(() => {
+          setDownloadingId((current) => (current === selectedTemplate.id ? null : current));
+        });
+      } else {
+        setSubscriptionTemplate(selectedTemplate);
+      }
     }
     if (action === "open") props.onOpenDetail(selectedTemplate);
 
@@ -892,6 +899,7 @@ function TemplateFeed(props: {
             onQuickActions={openQuickActions}
             quickActive={quickTemplate?.id === template.id}
             feedback={cardFeedback?.templateId === template.id ? cardFeedback : null}
+            downloading={downloadingId === template.id}
           />
         ))}
       </div>
@@ -907,7 +915,7 @@ function TemplateFeed(props: {
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/15 bg-white/[0.06]" />
             <QuickActionButton action="like" target={quickActionTarget} offset={actionOffsets.like} onTarget={setQuickActionTarget} onClick={() => runQuickAction("like")} ariaLabel="Like template" active={props.interactions.liked.has(quickTemplate.id)}><Heart className="h-6 w-6" fill={props.interactions.liked.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
             <QuickActionButton action="save" target={quickActionTarget} offset={actionOffsets.save} onTarget={setQuickActionTarget} onClick={() => runQuickAction("save")} ariaLabel="Save template" active={props.interactions.saved.has(quickTemplate.id)}><Bookmark className="h-6 w-6" fill={props.interactions.saved.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
-            <QuickActionButton action="download" target={quickActionTarget} offset={actionOffsets.download} onTarget={setQuickActionTarget} onClick={() => runQuickAction("download")} ariaLabel="Download printable template"><Download className="h-6 w-6" strokeWidth={1.8} /></QuickActionButton>
+            <QuickActionButton action="download" target={quickActionTarget} offset={actionOffsets.download} onTarget={setQuickActionTarget} onClick={() => runQuickAction("download")} ariaLabel="Download printable template">{downloadingId === quickTemplate.id ? <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.8} /> : <Download className="h-6 w-6" strokeWidth={1.8} />}</QuickActionButton>
             <QuickActionButton action="share" target={quickActionTarget} offset={actionOffsets.share} onTarget={setQuickActionTarget} onClick={() => runQuickAction("share")} ariaLabel="Share template"><Share2 className="h-6 w-6" strokeWidth={1.8} /></QuickActionButton>
             <QuickActionButton action="open" target={quickActionTarget} offset={actionOffsets.open} onTarget={setQuickActionTarget} onClick={() => runQuickAction("open")} ariaLabel="Open template"><ArrowUpRight className="h-6 w-6" strokeWidth={1.8} /></QuickActionButton>
             {quickActionTarget ? <div className="pointer-events-none fixed z-[1301] whitespace-nowrap px-0 py-0 text-2xl font-semibold tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]" style={{ left: Math.max(quickOrigin.x - 160, 16), top: Math.min(Math.max(quickOrigin.y + 110, 16), window.innerHeight - 52) }}>{quickActionTarget[0].toUpperCase() + quickActionTarget.slice(1)}</div> : null}
@@ -929,6 +937,7 @@ function TemplateCard({
   feedback,
   statusIcon,
   eager = false,
+  downloading = false,
 }: {
   template: Template;
   onOpenDetail?: () => void;
@@ -937,6 +946,7 @@ function TemplateCard({
   feedback?: CardFeedback | null;
   statusIcon?: "like" | "save";
   eager?: boolean;
+  downloading?: boolean;
 }) {
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressRef = useRef(false);
@@ -963,6 +973,12 @@ function TemplateCard({
           <span className="flex items-center justify-center text-white drop-shadow-[0_3px_10px_rgba(0,0,0,0.7)]">
             {feedback.action === "like" ? <Heart className="h-8 w-8" fill={feedback.active ? "currentColor" : "none"} strokeWidth={2.2} /> : <Bookmark className="h-8 w-8" fill={feedback.active ? "currentColor" : "none"} strokeWidth={2.2} />}
           </span>
+        </span>
+      ) : null}
+      {downloading ? (
+        <span aria-live="polite" aria-label="Downloading template" className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/45 backdrop-blur-[2px]">
+          <LoaderCircle className="h-8 w-8 animate-spin text-white" strokeWidth={2.2} />
+          <span className="text-[11px] font-semibold text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">Downloading…</span>
         </span>
       ) : null}
       <p className="pointer-events-none absolute bottom-4 left-3 z-10 max-w-[calc(100%-3.5rem)] truncate text-xs font-medium leading-4 text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">{template.name}</p>
@@ -1088,6 +1104,7 @@ export function TemplateDetail({ template, templates, onBack, subscribed = false
   const [subscriptionPrompt, setSubscriptionPrompt] = useState(false);
   const [showScrollHint, setShowScrollHint] = useState(false);
   const [galleryTemplate, setGalleryTemplate] = useState<Template | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -1154,8 +1171,13 @@ export function TemplateDetail({ template, templates, onBack, subscribed = false
   const canDownload = subscribed;
 
   const requestDownload = () => {
-    if (canDownload) void downloadTemplate(activeTemplate);
-    else setSubscriptionPrompt(true);
+    if (!canDownload) {
+      setSubscriptionPrompt(true);
+      return;
+    }
+    if (downloadingId) return;
+    setDownloadingId(activeTemplate.id);
+    void downloadTemplate(activeTemplate).finally(() => setDownloadingId(null));
   };
 
   const handleDoubleTap = (reelTemplate: Template) => {
@@ -1180,7 +1202,7 @@ export function TemplateDetail({ template, templates, onBack, subscribed = false
             }}
             className="relative h-dvh snap-start snap-always touch-manipulation select-none overflow-hidden bg-[#f2eee8]"
           >
-            <DetailVideoPlayer template={reelTemplate} active={activeTemplate.id === reelTemplate.id && !galleryTemplate} onDownload={requestDownload} />
+            <DetailVideoPlayer template={reelTemplate} active={activeTemplate.id === reelTemplate.id && !galleryTemplate} onDownload={requestDownload} downloading={downloadingId === reelTemplate.id} />
             {heartBurstTemplate === reelTemplate.id ? (
               <div className="heart-burst pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
                 <Heart fill="currentColor" strokeWidth={1.5} />
@@ -1641,7 +1663,7 @@ function TemplateGallery({ template, onClose }: { template: Template; onClose: (
   );
 }
 
-function DetailVideoPlayer({ template, active, onDownload }: { template: Template; active: boolean; onDownload: () => void }) {
+function DetailVideoPlayer({ template, active, onDownload, downloading }: { template: Template; active: boolean; onDownload: () => void; downloading: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const speedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureStartRef = useRef({ x: 0, y: 0 });
@@ -1764,8 +1786,9 @@ function DetailVideoPlayer({ template, active, onDownload }: { template: Templat
           <span className="rounded-full bg-white/15 px-2.5 py-1 text-white backdrop-blur">{template.category}</span>
           <span>{template.time}</span><span className="h-1 w-1 rounded-full bg-white/45" /><span>{template.difficulty}</span><span className="h-1 w-1 rounded-full bg-white/45" /><span>{template.supplies}</span>
         </div>
-        <button type="button" onClick={onDownload} className="pointer-events-auto mb-3 mt-3 flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98]">
-          <Download className="h-5 w-5" strokeWidth={2} /> Download template
+        <button type="button" onClick={onDownload} disabled={downloading} aria-busy={downloading} className="pointer-events-auto mb-3 mt-3 flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98] disabled:opacity-70">
+          {downloading ? <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={2} /> : <Download className="h-5 w-5" strokeWidth={2} />}
+          {downloading ? "Downloading…" : "Download template"}
         </button>
         <div className="pointer-events-auto flex items-center gap-3 text-xs text-white/85">
           <span className="w-8 tabular-nums">{formatTime(currentTime)}</span>
