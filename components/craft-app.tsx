@@ -10,6 +10,7 @@ import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious
 import { EmailIcon, EmailShareButton, FacebookIcon, FacebookShareButton, LinkedinIcon, LinkedinShareButton, PinterestIcon, PinterestShareButton, ThreadsIcon, ThreadsShareButton, TwitterIcon, TwitterShareButton, WhatsappIcon, WhatsappShareButton } from "react-share";
 import { fetchPublishedTemplates } from "@/lib/templates/client";
 import type { PublishedTemplate } from "@/lib/templates/types";
+import { PLAN_DETAILS } from "@/lib/payments/plans";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useStoryPlayer } from "@/components/story-player";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
@@ -83,21 +84,27 @@ function triggerHaptic(pattern: number | number[] = 10) {
 }
 
 async function downloadTemplate(template: Template) {
-  if (!template.printableFilePath) {
+  if (!template.hasPrintable) {
     window.alert("The printable file for this template is not available yet.");
     return;
   }
 
   try {
-    const response = await fetch(template.printableFilePath);
+    const linkResponse = await fetch(`/api/templates/${template.slug}/download`);
+    const linkData = await linkResponse.json();
+    if (!linkResponse.ok || !linkData.url) {
+      window.alert(linkData.error || "The printable file could not be downloaded. Please try again.");
+      return;
+    }
+
+    const response = await fetch(linkData.url);
     if (!response.ok) throw new Error(`Download failed with status ${response.status}`);
 
     const file = await response.blob();
     const objectUrl = URL.createObjectURL(file);
-    const extension = template.printableFilePath.split("?")[0].split(".").pop() || "pdf";
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = `${template.slug}-template.${extension}`;
+    link.download = `${template.slug}-template.pdf`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -120,7 +127,7 @@ export type Template = {
   galleryImages: string[];
   galleryAltText: string[];
   supplyItems: Array<{ name: string; icon: string | null }>;
-  printableFilePath?: string;
+  hasPrintable: boolean;
   palette?: [string, string, string];
   motif?: "flowers" | "lantern" | "origami" | "card" | "wreath" | "clay" | "vase" | "hanger";
 };
@@ -140,6 +147,7 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     galleryImages: template.galleryImages.map((image) => image.url),
     galleryAltText: template.galleryImages.map((image) => image.altText),
     supplyItems: template.supplies.map((supply) => ({ name: supply.name, icon: supply.icon })),
+    hasPrintable: template.hasPrintable,
   };
 }
 
@@ -263,7 +271,7 @@ export function useTemplateInteractions(): TemplateInteractions {
 
 const VALID_TABS: Tab[] = ["templates", "browse", "stories", "products", "profile"];
 
-function CraftApp({ initialTemplates = [], canAddTemplates = false, initialTab }: { initialTemplates?: PublishedTemplate[]; canAddTemplates?: boolean; initialTab?: string }) {
+function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed = false, initialTab }: { initialTemplates?: PublishedTemplate[]; canAddTemplates?: boolean; subscribed?: boolean; initialTab?: string }) {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>(() => initialTemplates.map(mapPublishedTemplate));
   const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -275,7 +283,6 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, initialTab }
   const player = useStoryPlayer();
   const storyDetailRef = useRef<StoryDetailHandle | null>(null);
   const interactions = useTemplateInteractions();
-  const subscribed = false;
   const categories = useMemo(() => Array.from(new Set(templates.map((item) => item.category))), [templates]);
 
   useEffect(() => {
@@ -359,19 +366,19 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, initialTab }
           </section>
         ) : tab === "stories" ? (
           <section className="m-0 flex min-h-0 flex-1 flex-col bg-black p-0">
-            <TemplateTopBar dark canAddTemplates={canAddTemplates} categoriesOverride={["All", "Calm", "Animals", "Adventure", "Sleep"]} activeCategory="All" onCategoryChange={() => undefined} />
+            <TemplateTopBar dark canAddTemplates={canAddTemplates} subscribed={subscribed} categoriesOverride={["All", "Calm", "Animals", "Adventure", "Sleep"]} activeCategory="All" onCategoryChange={() => undefined} />
             <StoriesScreen onOpenStory={openStory} />
           </section>
         ) : tab === "products" ? (
           <section className="m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
-            <TemplateTopBar canAddTemplates={canAddTemplates} categoriesOverride={["All", "Paper", "Paint", "Clay", "Tools", "Kits"]} activeCategory="All" onCategoryChange={() => undefined} />
+            <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} categoriesOverride={["All", "Paper", "Paint", "Clay", "Tools", "Kits"]} activeCategory="All" onCategoryChange={() => undefined} />
             <TemplateFeed templates={templates} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />
           </section>
         ) : tab === "profile" ? (
-          <ProfileScreen templates={templates} interactions={interactions} />
+          <ProfileScreen templates={templates} interactions={interactions} subscribed={subscribed} />
         ) : (
           <section className="m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
-            <TemplateTopBar canAddTemplates={canAddTemplates} activeCategory={templateCategory} onCategoryChange={setTemplateCategory} categoriesOverride={["All", ...categories]} showSearch searchQuery={templateSearch} onSearchChange={setTemplateSearch} />
+            <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory={templateCategory} onCategoryChange={setTemplateCategory} categoriesOverride={["All", ...categories]} showSearch searchQuery={templateSearch} onSearchChange={setTemplateSearch} />
             {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : <TemplateFeed templates={activeList} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />}
           </section>
         )}
@@ -691,7 +698,7 @@ function SceneMedia({ story, index, className }: { story: Story; index: number; 
   return <StoryArtwork story={story} className={className} large scene={index} />;
 }
 
-export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false, canAddTemplates = false, categoriesOverride, showSearch = false, searchQuery = "", onSearchChange }: { activeCategory: string; onCategoryChange: (category: string) => void; dark?: boolean; canAddTemplates?: boolean; categoriesOverride?: string[]; showSearch?: boolean; searchQuery?: string; onSearchChange?: (query: string) => void }) {
+export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false, canAddTemplates = false, subscribed = false, categoriesOverride, showSearch = false, searchQuery = "", onSearchChange }: { activeCategory: string; onCategoryChange: (category: string) => void; dark?: boolean; canAddTemplates?: boolean; subscribed?: boolean; categoriesOverride?: string[]; showSearch?: boolean; searchQuery?: string; onSearchChange?: (query: string) => void }) {
   const router = useRouter();
   const filterCategories = categoriesOverride ?? ["All"];
 
@@ -702,13 +709,15 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
           <Image src="/lvo.jpg" alt="LVO Crafts logo" width={48} height={48} className={`h-12 w-12 rounded-full border-2 object-cover ${dark ? "border-white" : "border-black"}`} priority />
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" aria-label="Subscribe" onClick={() => router.push("/subscription")} className={`flex h-12 items-center gap-1.5 rounded-full px-4 text-xs font-medium shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95 ${dark ? "bg-white text-black" : "bg-black text-white"}`}>
-            <SubscribeIcon />
-            <span className="flex flex-col items-start leading-tight">
-              <span>Subscribe</span>
-              <span className={dark ? "text-[11px] text-black/55" : "text-[11px] text-white/65"}>$1.50/mo</span>
-            </span>
-          </button>
+          {subscribed ? null : (
+            <button type="button" aria-label="Subscribe" onClick={() => router.push("/subscription")} className={`flex h-12 items-center gap-1.5 rounded-full px-4 text-xs font-medium shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95 ${dark ? "bg-white text-black" : "bg-black text-white"}`}>
+              <SubscribeIcon />
+              <span className="flex flex-col items-start leading-tight">
+                <span>Subscribe</span>
+                <span className={dark ? "text-[11px] text-black/55" : "text-[11px] text-white/65"}>{PLAN_DETAILS.monthly.price}/mo</span>
+              </span>
+            </button>
+          )}
           {canAddTemplates ? (
             <button
               type="button"
@@ -1438,7 +1447,7 @@ function StoryThumbnailIcon({ story, progress, playing, dark, onTogglePlaying }:
   );
 }
 
-function ProfileScreen({ templates, interactions }: { templates: Template[]; interactions: TemplateInteractions }) {
+function ProfileScreen({ templates, interactions, subscribed = false }: { templates: Template[]; interactions: TemplateInteractions; subscribed?: boolean }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>();
   const [libraryTab, setLibraryTab] = useState<"saved" | "liked">("saved");
@@ -1473,7 +1482,6 @@ function ProfileScreen({ templates, interactions }: { templates: Template[]; int
       ? user.user_metadata.name
       : user.email?.split("@")[0] || "Your account";
   const initials = displayName.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
-  const isSubscribed = user.app_metadata?.is_subscribed === true || user.app_metadata?.subscription_status === "active";
 
   const signOut = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -1487,10 +1495,10 @@ function ProfileScreen({ templates, interactions }: { templates: Template[]; int
       <div className="flex items-center gap-4">
         <div className="relative shrink-0">
           <div aria-hidden="true" className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black text-xl font-semibold text-white">{initials || "U"}</div>
-          {isSubscribed ? (
-            <button type="button" aria-label="View subscription" onClick={() => router.push("/subscription")} className="absolute -right-1 -top-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#f2f2f2] text-black transition active:scale-90">
+          {subscribed ? (
+            <span aria-label="Subscribed" title="Subscribed" className="absolute -right-1 -top-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#f2f2f2] text-black">
               <Gem className="h-4 w-4" strokeWidth={2} />
-            </button>
+            </span>
           ) : null}
         </div>
         <div className="min-w-0">

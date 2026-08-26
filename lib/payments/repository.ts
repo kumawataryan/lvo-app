@@ -36,6 +36,19 @@ export async function createPendingPurchase(
   return data.id as string;
 }
 
+export async function hasActiveSubscription(supabase: SupabaseClient, userId: string) {
+  const { data, error } = await supabase
+    .from("purchases")
+    .select("id")
+    .eq("user_id", userId)
+    .in("status", ["active", "completed"])
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Unable to check subscription: ${error.message}`);
+  return Boolean(data);
+}
+
 export async function findPurchaseByRazorpayId(field: "razorpay_order_id" | "razorpay_subscription_id", value: string) {
   const supabase = createSupabaseServiceRoleClient();
   const { data, error } = await supabase.from("purchases").select("id, user_id, plan_id, billing_type").eq(field, value).maybeSingle();

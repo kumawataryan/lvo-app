@@ -31,6 +31,7 @@ export type PublishedTemplate = {
   difficulty: TemplateDifficulty;
   videoUrl: string;
   thumbnailUrl: string | null;
+  hasPrintable: boolean;
   isFeatured: boolean;
   sortOrder: number;
   publishedAt: string;
