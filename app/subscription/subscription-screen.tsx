@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { loadRazorpayCheckout, type RazorpaySuccessResponse } from "@/lib/razorpay/checkout";
-import { GATEWAYS, PAYPAL_PLAN_DETAILS, PLAN_DETAILS, PLAN_ORDER, faviconUrl, type Gateway, type PlanId } from "@/lib/payments/plans";
+import { GATEWAYS, PLAN_DETAILS, PLAN_ORDER, RAZORPAY_PLAN_DETAILS, etsyPrice, faviconUrl, type Gateway, type PlanId } from "@/lib/payments/plans";
 
 const benefits = [
   "Unlimited downloads",
@@ -21,9 +21,12 @@ const ETSY_SHOP_URL = process.env.NEXT_PUBLIC_ETSY_SHOP_URL || "";
 
 function planDisplay(planId: PlanId, gateway: Gateway | null) {
   const base = PLAN_DETAILS[planId];
-  if (gateway === "paypal" || gateway === "etsy") {
-    const usd = PAYPAL_PLAN_DETAILS[planId];
-    return { name: base.name, period: base.period, price: usd.price, badge: usd.badge };
+  if (gateway === "razorpay") {
+    const inr = RAZORPAY_PLAN_DETAILS[planId];
+    return { name: base.name, period: base.period, price: inr.price, badge: inr.badge };
+  }
+  if (gateway === "etsy") {
+    return { name: base.name, period: base.period, price: etsyPrice(planId).price, badge: base.badge };
   }
   return { name: base.name, period: base.period, price: base.price, badge: base.badge };
 }

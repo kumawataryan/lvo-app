@@ -1,6 +1,6 @@
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { createPendingPurchase } from "@/lib/payments/repository";
-import { PAYPAL_PLAN_DETAILS, isPlanId } from "@/lib/payments/plans";
+import { etsyPrice, isPlanId } from "@/lib/payments/plans";
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseAuthServerClient();
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       planId,
       billingType: planId === "lifetime" ? "one_time" : "subscription",
       gateway: "etsy",
-      amount: Math.round(Number(PAYPAL_PLAN_DETAILS[planId].amount) * 100),
+      amount: Math.round(etsyPrice(planId).usdAmount * 100),
       currency: "USD",
       externalReference: orderReference || undefined,
     });

@@ -1,7 +1,7 @@
 import { createRazorpayClient, isRazorpayConfigured } from "@/lib/razorpay/client";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { createPendingPurchase } from "@/lib/payments/repository";
-import { PLAN_DETAILS, isPlanId } from "@/lib/payments/plans";
+import { RAZORPAY_PLAN_DETAILS, isPlanId } from "@/lib/payments/plans";
 
 const RAZORPAY_PLAN_ENV: Record<"monthly" | "yearly", string | undefined> = {
   monthly: process.env.RAZORPAY_PLAN_ID_MONTHLY,
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return Response.json({ error: "Please sign in to continue." }, { status: 401 });
 
-  const plan = PLAN_DETAILS[planId];
+  const plan = RAZORPAY_PLAN_DETAILS[planId];
 
   try {
     const razorpay = createRazorpayClient();
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
 
     await createPendingPurchase(supabase, {
       userId: user.id,
-      planId: plan.id,
+      planId,
       billingType: "subscription",
       gateway: "razorpay",
       amount: plan.amount,

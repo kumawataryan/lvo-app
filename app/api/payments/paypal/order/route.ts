@@ -1,7 +1,7 @@
 import { isPaypalConfigured, paypalFetch } from "@/lib/paypal/client";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { createPendingPurchase } from "@/lib/payments/repository";
-import { PAYPAL_PLAN_DETAILS } from "@/lib/payments/plans";
+import { amountInCents, paypalAmountString } from "@/lib/payments/plans";
 
 export async function POST(request: Request) {
   if (!isPaypalConfigured()) {
@@ -12,7 +12,6 @@ export async function POST(request: Request) {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return Response.json({ error: "Please sign in to continue." }, { status: 401 });
 
-  const plan = PAYPAL_PLAN_DETAILS.lifetime;
   const origin = new URL(request.url).origin;
 
   try {
@@ -21,7 +20,7 @@ export async function POST(request: Request) {
       planId: "lifetime",
       billingType: "one_time",
       gateway: "paypal",
-      amount: Math.round(Number(plan.amount) * 100),
+      amount: amountInCents("lifetime"),
       currency: "USD",
     });
 
@@ -29,7 +28,7 @@ export async function POST(request: Request) {
       method: "POST",
       body: JSON.stringify({
         intent: "CAPTURE",
-        purchase_units: [{ custom_id: purchaseId, amount: { currency_code: "USD", value: plan.amount } }],
+        purchase_units: [{ custom_id: purchaseId, amount: { currency_code: "USD", value: paypalAmountString("lifetime") } }],
         application_context: {
           return_url: `${origin}/subscription/paypal/return`,
           cancel_url: `${origin}/subscription?paypal=cancelled`,

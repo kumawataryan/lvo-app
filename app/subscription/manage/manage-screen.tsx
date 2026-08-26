@@ -26,6 +26,10 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", year: "numeric" }).format(new Date(value));
 }
 
+function formatAmount(amountInMinorUnits: number, currency: string) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(amountInMinorUnits / 100);
+}
+
 export function ManageSubscriptionScreen({ purchase }: { purchase: Purchase }) {
   const router = useRouter();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -70,7 +74,7 @@ export function ManageSubscriptionScreen({ purchase }: { purchase: Purchase }) {
           <div className="rounded-2xl border-2 border-black/10 p-5">
             <div className="flex items-center justify-between">
               <p className="text-base font-semibold">{plan.name} plan</p>
-              <p className="text-base font-semibold tracking-tight">{plan.price}</p>
+              <p className="text-base font-semibold tracking-tight">{formatAmount(purchase.amount, purchase.currency)}</p>
             </div>
 
             {purchase.billing_type === "one_time" ? (

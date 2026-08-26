@@ -1,7 +1,7 @@
 import { createRazorpayClient, isRazorpayConfigured } from "@/lib/razorpay/client";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { createPendingPurchase } from "@/lib/payments/repository";
-import { PLAN_DETAILS } from "@/lib/payments/plans";
+import { RAZORPAY_PLAN_DETAILS } from "@/lib/payments/plans";
 
 export async function POST() {
   if (!isRazorpayConfigured()) {
@@ -12,7 +12,7 @@ export async function POST() {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return Response.json({ error: "Please sign in to continue." }, { status: 401 });
 
-  const plan = PLAN_DETAILS.lifetime;
+  const plan = RAZORPAY_PLAN_DETAILS.lifetime;
 
   try {
     const razorpay = createRazorpayClient();
@@ -20,12 +20,12 @@ export async function POST() {
       amount: plan.amount,
       currency: "INR",
       receipt: `lifetime_${user.id.slice(0, 8)}_${Date.now()}`,
-      notes: { user_id: user.id, plan_id: plan.id },
+      notes: { user_id: user.id, plan_id: "lifetime" },
     });
 
     await createPendingPurchase(supabase, {
       userId: user.id,
-      planId: plan.id,
+      planId: "lifetime",
       billingType: "one_time",
       gateway: "razorpay",
       amount: plan.amount,

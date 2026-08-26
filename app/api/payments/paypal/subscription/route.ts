@@ -1,7 +1,7 @@
 import { isPaypalConfigured, paypalFetch } from "@/lib/paypal/client";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { createPendingPurchase } from "@/lib/payments/repository";
-import { PAYPAL_PLAN_DETAILS, isPlanId } from "@/lib/payments/plans";
+import { amountInCents, isPlanId } from "@/lib/payments/plans";
 
 const PAYPAL_PLAN_ENV: Record<"monthly" | "yearly", string | undefined> = {
   monthly: process.env.PAYPAL_PLAN_ID_MONTHLY,
@@ -34,7 +34,6 @@ export async function POST(request: Request) {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return Response.json({ error: "Please sign in to continue." }, { status: 401 });
 
-  const plan = PAYPAL_PLAN_DETAILS[planId];
   const origin = new URL(request.url).origin;
 
   try {
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
       planId,
       billingType: "subscription",
       gateway: "paypal",
-      amount: Math.round(Number(plan.amount) * 100),
+      amount: amountInCents(planId),
       currency: "USD",
     });
 
