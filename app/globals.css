@@ -8,19 +8,143 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: "Inter", "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 body {
+  position: relative;
+  height: 100%;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+.reel-action svg {
+  width: 28px;
+  height: 28px;
+}
+
+.mobile-nav {
+  position: fixed;
+  z-index: 2100;
+  bottom: 0;
+  left: 50%;
+  display: flex;
+  min-height: 5rem;
+  width: max-content;
+  margin-inline: auto;
+  align-items: center;
+  border-top: 0;
+  background: transparent;
+  padding: 0.5rem 0.75rem max(0.5rem, env(safe-area-inset-bottom));
+  pointer-events: auto;
+  transform: translateX(-50%);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-nav button {
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input {
+  touch-action: manipulation;
+}
+
+.template-card,
+.template-card * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@keyframes heart-burst {
+  0% {
+    opacity: 0;
+    transform: scale(0.35) rotate(-12deg);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1.2) rotate(0deg);
+  }
+  58% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35) rotate(8deg);
+  }
+}
+
+.heart-burst {
+  animation: heart-burst 850ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.heart-burst svg {
+  width: 88px;
+  height: 88px;
+}
+
+@keyframes card-action-feedback {
+  0% {
+    opacity: 0;
+    transform: scale(0.65);
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+.card-action-feedback > span {
+  animation: card-action-feedback 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes quick-action-pop {
+  0% {
+    opacity: 0;
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.quick-action-pop {
+  animation: quick-action-pop 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heart-burst {
+    animation-duration: 1ms;
+  }
+
+  .card-action-feedback > span {
+    animation-duration: 1ms;
+  }
+
+  .quick-action-pop {
+    animation-duration: 1ms;
+  }
 }
