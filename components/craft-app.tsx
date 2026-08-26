@@ -313,8 +313,21 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed =
 
   const openTemplate = (template: Template) => {
     setDetailTemplate(template);
-    router.push(`/templates/${template.slug}`);
+    window.history.pushState(window.history.state, "", `/templates/${template.slug}`);
   };
+
+  const closeTemplate = () => {
+    setDetailTemplate(null);
+    if (window.location.pathname !== "/") window.history.pushState(window.history.state, "", "/");
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (!window.location.pathname.startsWith("/templates/")) setDetailTemplate(null);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const openStory = (story: Story) => {
     player.openStory(story);
@@ -386,7 +399,7 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed =
       </div>
 
       {detailTemplate ? (
-        <TemplateDetail template={detailTemplate} templates={templates} onBack={() => { setDetailTemplate(null); router.push("/"); }} subscribed={subscribed} interactions={interactions} />
+        <TemplateDetail template={detailTemplate} templates={templates} onBack={closeTemplate} subscribed={subscribed} interactions={interactions} />
       ) : null}
 
       {player.story && !player.minimized ? (
@@ -1191,7 +1204,7 @@ export function TemplateDetail({ template, templates, onBack, subscribed = false
 
   return (
     <div className="fixed inset-0 z-[2000] m-0 h-dvh w-full overflow-hidden border-0 bg-black p-0 text-white">
-    <div className="relative m-0 h-dvh w-full overflow-hidden border-0 bg-black p-0">
+    <div className="relative mx-auto h-dvh w-full max-w-[430px] overflow-hidden border-0 bg-black p-0">
       <div ref={reelRef} onScroll={handleReelScroll} className="h-full snap-y snap-mandatory overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {templates.map((reelTemplate) => (
           <section
@@ -1786,7 +1799,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading }: { temp
           <span className="rounded-full bg-white/15 px-2.5 py-1 text-white backdrop-blur">{template.category}</span>
           <span>{template.time}</span><span className="h-1 w-1 rounded-full bg-white/45" /><span>{template.difficulty}</span><span className="h-1 w-1 rounded-full bg-white/45" /><span>{template.supplies}</span>
         </div>
-        <button type="button" onClick={onDownload} disabled={downloading} aria-busy={downloading} className="pointer-events-auto mb-3 mt-3 flex h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98] disabled:opacity-70">
+        <button type="button" onClick={onDownload} disabled={downloading} aria-busy={downloading} className="pointer-events-auto mb-3 mt-3 flex h-11 min-w-[178px] items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98] disabled:opacity-70">
           {downloading ? <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={2} /> : <Download className="h-5 w-5" strokeWidth={2} />}
           {downloading ? "Downloading…" : "Download template"}
         </button>
