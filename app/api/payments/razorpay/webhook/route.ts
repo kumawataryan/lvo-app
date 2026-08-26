@@ -75,7 +75,7 @@ export async function POST(request: Request) {
         const subscription = body.payload.subscription?.entity;
         if (subscription?.id) {
           const purchase = await findPurchaseByRazorpayId("razorpay_subscription_id", subscription.id);
-          if (purchase) await markPurchaseStatus(purchase.id, { status: "cancelled" });
+          if (purchase) await markPurchaseStatus(purchase.id, { status: "cancelled", cancelAtPeriodEnd: false });
         }
         break;
       }

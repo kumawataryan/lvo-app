@@ -56,7 +56,9 @@ export async function POST(request: Request) {
       userId: user.id,
       planId: plan.id,
       billingType: "subscription",
+      gateway: "razorpay",
       amount: plan.amount,
+      currency: "INR",
       razorpaySubscriptionId: subscription.id,
     });
 

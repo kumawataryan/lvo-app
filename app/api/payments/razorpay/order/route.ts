@@ -27,7 +27,9 @@ export async function POST() {
       userId: user.id,
       planId: plan.id,
       billingType: "one_time",
+      gateway: "razorpay",
       amount: plan.amount,
+      currency: "INR",
       razorpayOrderId: order.id,
     });
 

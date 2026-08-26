@@ -1496,9 +1496,9 @@ function ProfileScreen({ templates, interactions, subscribed = false }: { templa
         <div className="relative shrink-0">
           <div aria-hidden="true" className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black text-xl font-semibold text-white">{initials || "U"}</div>
           {subscribed ? (
-            <span aria-label="Subscribed" title="Subscribed" className="absolute -right-1 -top-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#f2f2f2] text-black">
+            <button type="button" aria-label="Manage subscription" onClick={() => router.push("/subscription/manage")} className="absolute -right-1 -top-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#f2f2f2] text-black transition active:scale-90">
               <Gem className="h-4 w-4" strokeWidth={2} />
-            </span>
+            </button>
           ) : null}
         </div>
         <div className="min-w-0">
@@ -1585,7 +1585,13 @@ function ProfileScreen({ templates, interactions, subscribed = false }: { templa
         ) : null}
       </div>
 
-      <button type="button" onClick={signOut} className="mt-10 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-red-600 transition active:scale-[0.98]">
+      {subscribed ? (
+        <button type="button" onClick={() => router.push("/subscription/manage")} className="mt-10 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black transition active:scale-[0.98]">
+          <Gem className="h-4 w-4" /> Manage subscription
+        </button>
+      ) : null}
+
+      <button type="button" onClick={signOut} className={`flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-red-600 transition active:scale-[0.98] ${subscribed ? "mt-3" : "mt-10"}`}>
         <LogOut className="h-4 w-4" /> Sign out
       </button>
     </section>

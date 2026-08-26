@@ -1,12 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { Check, LoaderCircle, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { loadRazorpayCheckout, type RazorpaySuccessResponse } from "@/lib/razorpay/checkout";
-import { PLAN_DETAILS, PLAN_ORDER, type PlanId } from "@/lib/payments/plans";
+import { GATEWAYS, PAYPAL_PLAN_DETAILS, PLAN_DETAILS, PLAN_ORDER, faviconUrl, type Gateway, type PlanId } from "@/lib/payments/plans";
 
 const benefits = [
   "Unlimited downloads",
@@ -16,11 +17,24 @@ const benefits = [
   "Print whenever you need",
 ];
 
+const ETSY_SHOP_URL = process.env.NEXT_PUBLIC_ETSY_SHOP_URL || "";
+
+function planDisplay(planId: PlanId, gateway: Gateway | null) {
+  const base = PLAN_DETAILS[planId];
+  if (gateway === "paypal" || gateway === "etsy") {
+    const usd = PAYPAL_PLAN_DETAILS[planId];
+    return { name: base.name, period: base.period, price: usd.price, badge: usd.badge };
+  }
+  return { name: base.name, period: base.period, price: base.price, badge: base.badge };
+}
+
 export function SubscriptionScreen() {
   const router = useRouter();
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("monthly");
+  const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [etsyRequested, setEtsyRequested] = useState(false);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -38,67 +52,128 @@ export function SubscriptionScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("paypal") === "cancelled") setErrorMessage("Checkout was cancelled.");
+    else if (params.get("paypal") === "error") setErrorMessage("We couldn't confirm your payment. Contact support if you were charged.");
+  }, []);
+
+  const startRazorpayCheckout = async () => {
+    await loadRazorpayCheckout();
+    const plan = PLAN_DETAILS[selectedPlan];
+    const endpoint = plan.billingType === "one_time" ? "/api/payments/razorpay/order" : "/api/payments/razorpay/subscription";
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: plan.billingType === "subscription" ? JSON.stringify({ planId: selectedPlan }) : undefined,
+    });
+
+    if (response.status === 401) {
+      router.push("/login");
+      return;
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      setErrorMessage(data.error || "Unable to start checkout. Please try again.");
+      setIsProcessing(false);
+      return;
+    }
+
+    const handleSuccess = async (razorpayResponse: RazorpaySuccessResponse) => {
+      try {
+        const verifyResponse = await fetch("/api/payments/razorpay/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(razorpayResponse),
+        });
+        if (!verifyResponse.ok) {
+          setErrorMessage("We couldn't confirm your payment. Contact support if you were charged.");
+          return;
+        }
+        router.push("/");
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    const razorpay = new window.Razorpay!({
+      key: data.keyId,
+      name: "Craft Library",
+      description: `${plan.name} plan`,
+      theme: { color: "#000000" },
+      ...(plan.billingType === "one_time"
+        ? { order_id: data.orderId, amount: data.amount, currency: data.currency }
+        : { subscription_id: data.subscriptionId }),
+      handler: handleSuccess,
+      modal: { ondismiss: () => setIsProcessing(false) },
+    });
+
+    razorpay.on("payment.failed", (failure) => {
+      setErrorMessage(failure.error.description || "Payment failed. Please try again.");
+      setIsProcessing(false);
+    });
+
+    razorpay.open();
+  };
+
+  const startPaypalCheckout = async () => {
+    const plan = PLAN_DETAILS[selectedPlan];
+    const endpoint = plan.billingType === "one_time" ? "/api/payments/paypal/order" : "/api/payments/paypal/subscription";
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: plan.billingType === "subscription" ? JSON.stringify({ planId: selectedPlan }) : undefined,
+    });
+
+    if (response.status === 401) {
+      router.push("/login");
+      return;
+    }
+
+    const data = await response.json();
+    if (!response.ok || !data.approveUrl) {
+      setErrorMessage(data.error || "Unable to start checkout. Please try again.");
+      setIsProcessing(false);
+      return;
+    }
+
+    window.location.href = data.approveUrl;
+  };
+
+  const requestEtsyActivation = async () => {
+    const response = await fetch("/api/payments/etsy/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ planId: selectedPlan }),
+    });
+
+    if (response.status === 401) {
+      router.push("/login");
+      return;
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      setErrorMessage(data.error || "Something went wrong. Please try again.");
+      setIsProcessing(false);
+      return;
+    }
+
+    setEtsyRequested(true);
+    setIsProcessing(false);
+    if (ETSY_SHOP_URL) window.open(ETSY_SHOP_URL, "_blank", "noopener,noreferrer");
+  };
+
   const startCheckout = async () => {
+    if (!selectedGateway) return;
     setErrorMessage(null);
     setIsProcessing(true);
 
     try {
-      await loadRazorpayCheckout();
-
-      const plan = PLAN_DETAILS[selectedPlan];
-      const endpoint = plan.billingType === "one_time" ? "/api/payments/razorpay/order" : "/api/payments/razorpay/subscription";
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: plan.billingType === "subscription" ? JSON.stringify({ planId: selectedPlan }) : undefined,
-      });
-
-      if (response.status === 401) {
-        router.push("/login");
-        return;
-      }
-
-      const data = await response.json();
-      if (!response.ok) {
-        setErrorMessage(data.error || "Unable to start checkout. Please try again.");
-        return;
-      }
-
-      const handleSuccess = async (razorpayResponse: RazorpaySuccessResponse) => {
-        try {
-          const verifyResponse = await fetch("/api/payments/razorpay/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(razorpayResponse),
-          });
-          if (!verifyResponse.ok) {
-            setErrorMessage("We couldn't confirm your payment. Contact support if you were charged.");
-            return;
-          }
-          router.push("/");
-        } finally {
-          setIsProcessing(false);
-        }
-      };
-
-      const razorpay = new window.Razorpay!({
-        key: data.keyId,
-        name: "Craft Library",
-        description: `${plan.name} plan`,
-        theme: { color: "#000000" },
-        ...(plan.billingType === "one_time"
-          ? { order_id: data.orderId, amount: data.amount, currency: data.currency }
-          : { subscription_id: data.subscriptionId }),
-        handler: handleSuccess,
-        modal: { ondismiss: () => setIsProcessing(false) },
-      });
-
-      razorpay.on("payment.failed", (failure) => {
-        setErrorMessage(failure.error.description || "Payment failed. Please try again.");
-        setIsProcessing(false);
-      });
-
-      razorpay.open();
+      if (selectedGateway === "razorpay") await startRazorpayCheckout();
+      else if (selectedGateway === "paypal") await startPaypalCheckout();
+      else await requestEtsyActivation();
     } catch {
       setErrorMessage("Unable to start checkout. Please try again.");
       setIsProcessing(false);
@@ -141,7 +216,7 @@ export function SubscriptionScreen() {
 
           <div className="mt-7 grid grid-cols-3 gap-2.5">
             {PLAN_ORDER.map((planId) => {
-              const plan = PLAN_DETAILS[planId];
+              const plan = planDisplay(planId, selectedGateway);
               const isSelected = planId === selectedPlan;
               return (
                 <button
@@ -175,6 +250,39 @@ export function SubscriptionScreen() {
               );
             })}
           </div>
+
+          <p className="mb-2 mt-7 text-xs font-semibold text-black/45">Payment method</p>
+          <div className="grid grid-cols-3 gap-2.5">
+            {GATEWAYS.map((gateway) => {
+              const isSelected = gateway.id === selectedGateway;
+              return (
+                <button
+                  key={gateway.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => {
+                    setSelectedGateway(gateway.id);
+                    setEtsyRequested(false);
+                    setErrorMessage(null);
+                  }}
+                  className={`flex flex-col items-center gap-1.5 rounded-2xl border-[3px] py-3 transition active:scale-[0.97] ${
+                    isSelected ? "border-black bg-black/3" : "border-black/20 bg-white"
+                  }`}
+                >
+                  <Image src={faviconUrl(gateway.iconDomain)} alt="" width={20} height={20} className="h-5 w-5 rounded" unoptimized />
+                  <span className="text-[11px] font-semibold">{gateway.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedGateway === "etsy" ? (
+            <p className="mt-2.5 text-center text-[11px] leading-snug text-black/45">
+              {etsyRequested
+                ? "Noted! Complete your purchase on Etsy — we'll activate your subscription within 24 hours."
+                : "Buy on Etsy, then we'll activate your subscription by hand — usually within 24 hours."}
+            </p>
+          ) : null}
         </section>
 
         <section className="shrink-0 bg-white px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
@@ -183,11 +291,17 @@ export function SubscriptionScreen() {
           <button
             type="button"
             onClick={startCheckout}
-            disabled={isProcessing}
-            className="flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-black text-base font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition active:scale-[0.99] disabled:opacity-60"
+            disabled={isProcessing || !selectedGateway || (selectedGateway === "etsy" && etsyRequested)}
+            className="flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-black text-base font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition active:scale-[0.99] disabled:opacity-40"
           >
             {isProcessing ? <LoaderCircle className="h-5 w-5 animate-spin" /> : null}
-            {isProcessing ? "Processing…" : "Continue"}
+            {isProcessing
+              ? "Processing…"
+              : etsyRequested && selectedGateway === "etsy"
+                ? "Request sent"
+                : selectedGateway === "etsy"
+                  ? "Open Etsy & notify us"
+                  : "Continue"}
           </button>
 
           <p className="mx-auto mt-3 max-w-xs text-center text-[9px] leading-snug text-black/25">
