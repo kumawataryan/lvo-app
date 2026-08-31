@@ -188,7 +188,7 @@ export function SubscriptionScreen() {
       <div className="mx-auto flex h-full max-h-[100vh] w-full max-w-[430px] flex-col overflow-hidden bg-white">
         <div className="shrink-0 px-4 pt-4">
           <section className="relative aspect-video w-full overflow-hidden rounded-[28px] bg-black [clip-path:inset(0_round_28px)]">
-            <button type="button" aria-label="Close" onClick={() => router.back()} className="absolute right-3 top-3 z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-black/70 text-white backdrop-blur-sm transition active:scale-95">
+            <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="absolute right-3 top-3 z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-black/70 text-white backdrop-blur-sm transition active:scale-95">
               <X className="h-6 w-6" />
             </button>
             <video

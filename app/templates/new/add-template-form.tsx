@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { ChevronDown, FileText, Images, LoaderCircle, Plus, Video, X } from "lucide-react";
+import { ChevronDown, FileText, Images, Link2, LoaderCircle, Plus, Video, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 
 type Category = { id: string; name: string };
 type UploadRecord = { bucket: "template-media" | "template-printables"; path: string };
@@ -22,7 +23,9 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
   const [duration, setDuration] = useState("15");
   const [difficulty, setDifficulty] = useState("easy");
   const [supplies, setSupplies] = useState("");
+  const [videoMode, setVideoMode] = useState<"upload" | "link">("upload");
   const [video, setVideo] = useState<File | null>(null);
+  const [videoUrl, setVideoUrl] = useState("");
   const [printable, setPrintable] = useState<File | null>(null);
   const [gallery, setGallery] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -62,9 +65,12 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
     setGallery(files);
   };
 
+  const videoLinkEmbed = videoMode === "link" ? parseVideoEmbedUrl(videoUrl) : null;
+  const videoReady = videoMode === "upload" ? Boolean(video) : Boolean(videoLinkEmbed);
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!video || !printable || !title.trim() || !categoryId) return;
+    if (!videoReady || !printable || !title.trim() || !categoryId) return;
 
     setSubmitting(true);
     setError("");
@@ -88,7 +94,7 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
 
     try {
       const [videoPath, printablePath, galleryPaths] = await Promise.all([
-        upload("template-media", "video", video),
+        videoMode === "upload" && video ? upload("template-media", "video", video) : Promise.resolve(""),
         upload("template-printables", "printable", printable),
         Promise.all(gallery.map((file, index) => upload("template-media", "gallery", file, index))),
       ]);
@@ -103,7 +109,8 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
           categoryId,
           durationMinutes: Number(duration),
           difficulty,
-          videoPath,
+          videoPath: videoMode === "upload" ? videoPath : undefined,
+          videoUrl: videoMode === "link" ? videoUrl.trim() : undefined,
           printablePath,
           galleryPaths,
           supplies: supplies.split(",").map((item) => item.trim()).filter(Boolean),
@@ -131,20 +138,45 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
             <p className="text-2xl font-semibold tracking-tight">New template</p>
             <p className="mt-1 text-sm text-black/45">Add the essentials and publish.</p>
           </div>
-          <button type="button" aria-label="Close" onClick={() => router.back()} className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95">
+          <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="mt-7 space-y-5">
-          <FilePicker
-            required
-            icon={<Video className="h-5 w-5" />}
-            title={video ? video.name : "Add template video"}
-            detail={video ? `${(video.size / 1024 / 1024).toFixed(1)} MB` : "MP4 or WebM · up to 100 MB"}
-            accept="video/mp4,video/webm"
-            onChange={selectVideo}
-          />
+          <Field label="Video">
+            <div className="mb-2.5 grid grid-cols-2 gap-1 rounded-xl bg-[#f2f2f2] p-1">
+              <button type="button" onClick={() => setVideoMode("upload")} className={`h-9 rounded-lg text-sm font-medium transition ${videoMode === "upload" ? "bg-white shadow-sm" : "text-black/50"}`}>Upload video</button>
+              <button type="button" onClick={() => setVideoMode("link")} className={`h-9 rounded-lg text-sm font-medium transition ${videoMode === "link" ? "bg-white shadow-sm" : "text-black/50"}`}>Paste link</button>
+            </div>
+            {videoMode === "upload" ? (
+              <FilePicker
+                required={videoMode === "upload"}
+                icon={<Video className="h-5 w-5" />}
+                title={video ? video.name : "Add template video"}
+                detail={video ? `${(video.size / 1024 / 1024).toFixed(1)} MB` : "MP4 or WebM · up to 100 MB"}
+                accept="video/mp4,video/webm"
+                onChange={selectVideo}
+              />
+            ) : (
+              <>
+                <div className="relative">
+                  <Link2 aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" strokeWidth={2.25} />
+                  <input
+                    type="url"
+                    required={videoMode === "link"}
+                    value={videoUrl}
+                    onChange={(event) => { setVideoUrl(event.target.value); setError(""); }}
+                    placeholder="YouTube Shorts link"
+                    className="h-12 w-full rounded-xl bg-[#f2f2f2] pl-11 pr-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2"
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-black/35">
+                  {videoUrl && !videoLinkEmbed ? "Paste a valid YouTube Shorts link." : "youtube.com/shorts/… or youtu.be/…"}
+                </p>
+              </>
+            )}
+          </Field>
 
           <Field label="Title">
             <input required maxLength={120} autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Paper flower bouquet" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
@@ -192,7 +224,7 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
 
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-        <button type="submit" disabled={submitting || !video || !printable || !title.trim() || !categoryId} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
+        <button type="submit" disabled={submitting || !videoReady || !printable || !title.trim() || !categoryId} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
           {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : <><Plus className="h-4 w-4" />Publish template</>}
         </button>
       </form>

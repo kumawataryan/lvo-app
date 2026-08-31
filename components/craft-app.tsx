@@ -3,20 +3,22 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, ArrowUpRight, Bookmark, ChevronDown, ChevronRight, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, Heart, Image as ImageIcon, Images, LayoutTemplate, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Pause, Pencil, Play, Plus, Quote, Ruler, Scissors, Search, Share2, Shapes, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Bookmark, ChevronDown, ChevronRight, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, Heart, Image as ImageIcon, Images, LayoutTemplate, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Pause, Pencil, Play, Plus, Quote, Ruler, Scissors, Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { gsap } from "gsap";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from "@/components/ui/carousel";
 import { EmailIcon, EmailShareButton, FacebookIcon, FacebookShareButton, LinkedinIcon, LinkedinShareButton, PinterestIcon, PinterestShareButton, ThreadsIcon, ThreadsShareButton, TwitterIcon, TwitterShareButton, WhatsappIcon, WhatsappShareButton } from "react-share";
 import { fetchPublishedTemplates } from "@/lib/templates/client";
 import type { PublishedTemplate } from "@/lib/templates/types";
+import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { useYoutubePlayer } from "@/lib/youtube/use-youtube-player";
 import { PLAN_DETAILS } from "@/lib/payments/plans";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useStoryPlayer } from "@/components/story-player";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 
-export type Tab = "templates" | "browse" | "stories" | "products" | "profile";
-type QuickAction = "share" | "like" | "save" | "download" | "open";
+export type Tab = "templates" | "browse" | "search" | "stories" | "products" | "profile";
+type QuickAction = "share" | "like" | "save" | "download";
 export type Story = {
   id: string;
   title: string;
@@ -66,8 +68,14 @@ export const demoStories: Story[] = [
     scenes: ["Nia opens a map beside the sunflowers", "A tiny trail winds through the grass", "Pebbles become a brave explorer’s bridge", "Nia returns with a pocket full of stories"],
   },
 ];
-type TemplateCollection = { id: string; name: string; templateIds: string[] };
+type TemplateCollection = { id: string; name: string; templateIds: string[]; childAvatar?: string };
 type TemplateCollectionRow = Omit<TemplateCollection, "templateIds"> & { template_collection_items: Array<{ template_id: string }> };
+export const CHILD_AVATAR_SRC: Record<string, string> = {
+  fox: "/avatars/avatar_01.png", bear: "/avatars/avatar_02.png", bunny: "/avatars/avatar_03.png",
+  lion: "/avatars/avatar_04.png", panda: "/avatars/avatar_05.png", frog: "/avatars/avatar_06.png",
+  koala: "/avatars/avatar_07.png", cat: "/avatars/avatar_08.png", dog: "/avatars/avatar_09.png",
+  owl: "/avatars/avatar_10.png", unicorn: "/avatars/avatar_11.png", dino: "/avatars/avatar_12.png",
+};
 export type TemplateInteractions = {
   liked: Set<string>;
   saved: Set<string>;
@@ -75,7 +83,20 @@ export type TemplateInteractions = {
   toggleLike: (templateId: string) => Promise<void>;
   saveToCollection: (templateId: string, options: { collectionId?: string; newName?: string }) => Promise<boolean>;
   removeSaved: (templateId: string) => Promise<boolean>;
+  deleteCollection: (collectionId: string) => Promise<boolean>;
 };
+
+export type SubscriptionSummary = {
+  planId: keyof typeof PLAN_DETAILS;
+  billingType: "subscription" | "one_time";
+  status: string;
+  gateway: string;
+  amount: number;
+  currency: string;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+};
+export type ProfileKidSummary = { id: string; name: string; avatar: string };
 
 function triggerHaptic(pattern: number | number[] = 10) {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
@@ -123,7 +144,8 @@ export type Template = {
   difficulty: "Easy" | "Medium" | "Advanced";
   supplies: string;
   description: string;
-  videoSrc: string;
+  videoSrc: string | null;
+  videoEmbedUrl: string | null;
   galleryImages: string[];
   galleryAltText: string[];
   supplyItems: Array<{ name: string; icon: string | null }>;
@@ -144,6 +166,7 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     supplies: `${template.supplies.length} ${template.supplies.length === 1 ? "supply" : "supplies"}`,
     description: template.shortDescription,
     videoSrc: template.videoUrl,
+    videoEmbedUrl: template.videoEmbedUrl,
     galleryImages: template.galleryImages.map((image) => image.url),
     galleryAltText: template.galleryImages.map((image) => image.altText),
     supplyItems: template.supplies.map((supply) => ({ name: supply.name, icon: supply.icon })),
@@ -168,14 +191,19 @@ export function useTemplateInteractions(): TemplateInteractions {
     }
 
     const supabase = createSupabaseBrowserClient();
-    const [likesResult, collectionsResult] = await Promise.all([
+    const [likesResult, collectionsResult, kidsResult] = await Promise.all([
       supabase.from("template_likes").select("template_id").eq("user_id", nextUser.id),
       supabase.from("template_collections").select("id, name, template_collection_items(template_id)").eq("user_id", nextUser.id).order("created_at"),
+      supabase.from("kids").select("collection_id, avatar").eq("user_id", nextUser.id),
     ]);
     if (!likesResult.error) setLiked(new Set((likesResult.data ?? []).map((item: { template_id: string }) => item.template_id)));
     if (!collectionsResult.error) {
       const rows = (collectionsResult.data ?? []) as TemplateCollectionRow[];
-      setCollections(rows.map(({ id, name, template_collection_items }) => ({ id, name, templateIds: template_collection_items.map((item) => item.template_id) })));
+      const childAvatarRows = (kidsResult.data ?? []) as Array<{ collection_id: string; avatar: string }>;
+      const childAvatars = new Map<string, string>(childAvatarRows.map((kid) => [kid.collection_id, kid.avatar]));
+      setCollections(rows
+        .map(({ id, name, template_collection_items }) => ({ id, name, templateIds: template_collection_items.map((item) => item.template_id), childAvatar: childAvatars.get(id) }))
+        .sort((a, b) => Number(Boolean(b.childAvatar)) - Number(Boolean(a.childAvatar))));
       setSaved(new Set(rows.flatMap((collection) => collection.template_collection_items.map((item) => item.template_id))));
     }
   };
@@ -266,19 +294,30 @@ export function useTemplateInteractions(): TemplateInteractions {
     return true;
   };
 
-  return { liked, saved, collections, toggleLike, saveToCollection, removeSaved };
+  const deleteCollection = async (collectionId: string) => {
+    const activeUser = requireUser();
+    if (!activeUser) return false;
+    const supabase = createSupabaseBrowserClient();
+    const { error } = await supabase.rpc("delete_template_collection", { collection_id_input: collectionId });
+    if (error) return false;
+    const remaining = collections.filter((collection) => collection.id !== collectionId);
+    setCollections(remaining);
+    setSaved(new Set(remaining.flatMap((collection) => collection.templateIds)));
+    return true;
+  };
+
+  return { liked, saved, collections, toggleLike, saveToCollection, removeSaved, deleteCollection };
 }
 
-const VALID_TABS: Tab[] = ["templates", "browse", "stories", "products", "profile"];
+const VALID_TABS: Tab[] = ["templates", "browse", "search", "stories", "products", "profile"];
 
-function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed = false, initialTab }: { initialTemplates?: PublishedTemplate[]; canAddTemplates?: boolean; subscribed?: boolean; initialTab?: string }) {
+function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed = false, initialTab, parentName = "", subscription = null, profileKids = [] }: { initialTemplates?: PublishedTemplate[]; canAddTemplates?: boolean; subscribed?: boolean; initialTab?: string; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>(() => initialTemplates.map(mapPublishedTemplate));
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>(VALID_TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "templates");
   const [browseCategory, setBrowseCategory] = useState<string | null>(null);
   const [templateCategory, setTemplateCategory] = useState("All");
-  const [templateSearch, setTemplateSearch] = useState("");
   const [detailTemplate, setDetailTemplate] = useState<Template | null>(null);
   const player = useStoryPlayer();
   const storyDetailRef = useRef<StoryDetailHandle | null>(null);
@@ -306,10 +345,6 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed =
       ? templates
       : templates.filter((template) => template.category === templateCategory);
 
-  const activeList = categoryList.filter((template) => {
-    const query = templateSearch.trim().toLowerCase();
-    return !query || `${template.name} ${template.category}`.toLowerCase().includes(query);
-  });
 
   const openTemplate = (template: Template) => {
     setDetailTemplate(template);
@@ -388,11 +423,13 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed =
             <TemplateFeed templates={templates} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />
           </section>
         ) : tab === "profile" ? (
-          <ProfileScreen templates={templates} interactions={interactions} subscribed={subscribed} />
+          <ProfileScreen templates={templates} interactions={interactions} subscribed={subscribed} parentName={parentName} subscription={subscription} profileKids={profileKids} />
+        ) : tab === "search" ? (
+          <SearchScreen templates={templates} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />
         ) : (
           <section className="m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
-            <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory={templateCategory} onCategoryChange={setTemplateCategory} categoriesOverride={["All", ...categories]} showSearch searchQuery={templateSearch} onSearchChange={setTemplateSearch} />
-            {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : <TemplateFeed templates={activeList} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />}
+            <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory={templateCategory} onCategoryChange={setTemplateCategory} categoriesOverride={["All", ...categories]} />
+            {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : <TemplateFeed templates={categoryList} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />}
           </section>
         )}
 
@@ -711,7 +748,7 @@ function SceneMedia({ story, index, className }: { story: Story; index: number; 
   return <StoryArtwork story={story} className={className} large scene={index} />;
 }
 
-export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false, canAddTemplates = false, subscribed = false, categoriesOverride, showSearch = false, searchQuery = "", onSearchChange }: { activeCategory: string; onCategoryChange: (category: string) => void; dark?: boolean; canAddTemplates?: boolean; subscribed?: boolean; categoriesOverride?: string[]; showSearch?: boolean; searchQuery?: string; onSearchChange?: (query: string) => void }) {
+export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false, canAddTemplates = false, subscribed = false, categoriesOverride }: { activeCategory: string; onCategoryChange: (category: string) => void; dark?: boolean; canAddTemplates?: boolean; subscribed?: boolean; categoriesOverride?: string[] }) {
   const router = useRouter();
   const filterCategories = categoriesOverride ?? ["All"];
 
@@ -719,7 +756,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
     <header className={`shrink-0 px-4 pb-3 pt-5 ${dark ? "bg-black text-white" : "bg-white text-black"}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Image src="/lvo.jpg" alt="LVO Crafts logo" width={48} height={48} className={`h-12 w-12 rounded-full border-2 object-cover ${dark ? "border-white" : "border-black"}`} priority />
+          <Image src="/lvo.jpg" alt="LVO Crafts logo" width={48} height={48} className={`h-12 w-12 rounded-2xl border-2 object-cover ${dark ? "border-white" : "border-black"}`} priority />
         </div>
         <div className="flex items-center gap-1">
           {subscribed ? null : (
@@ -736,26 +773,20 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
               type="button"
               aria-label="Add template"
               onClick={() => router.push("/templates/new")}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-black text-white transition active:scale-95"
+              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black text-white transition active:scale-95"
             >
               <Plus className="h-5 w-5" strokeWidth={2.25} />
             </button>
           ) : null}
         </div>
       </div>
-      {showSearch ? (
-        <label className="pointer-events-auto mt-4 flex h-12 touch-manipulation items-center gap-2 rounded-xl bg-black/[0.04] px-4 text-black">
-          <Search className="h-4 w-4 text-black/45" />
-          <input suppressHydrationWarning value={searchQuery} onChange={(event) => onSearchChange?.(event.target.value)} placeholder="Search templates" aria-label="Search templates" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-black/40" />
-        </label>
-      ) : null}
-      <div className="mt-5 flex gap-7 overflow-x-auto text-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="mt-5 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {filterCategories.map((category) => (
           <button
             key={category}
             type="button"
             onClick={() => onCategoryChange(category)}
-            className={`shrink-0 whitespace-nowrap pb-1 font-medium transition ${activeCategory === category ? (dark ? "border-b-2 border-white text-white" : "border-b-2 border-black text-black") : (dark ? "text-white/45 hover:text-white/80" : "text-black/45 hover:text-black/80")}`}
+            className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-[9px] text-[15px] font-medium backdrop-blur-xl transition active:scale-95 ${activeCategory === category ? (dark ? "bg-white/90 text-black" : "bg-black/85 text-white") : (dark ? "bg-white/20 text-white hover:bg-white/25" : "bg-black/[0.07] text-black/60 hover:bg-black/11")}`}
           >
             {category}
           </button>
@@ -765,14 +796,147 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
   );
 }
 
+function SearchScreen({ templates, onOpenDetail, subscribed, interactions }: { templates: Template[]; onOpenDetail: (template: Template) => void; subscribed: boolean; interactions: TemplateInteractions }) {
+  const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [difficultyFilter, setDifficultyFilter] = useState<"All" | Template["difficulty"]>("All");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const categories = useMemo(() => Array.from(new Set(templates.map((template) => template.category))), [templates]);
+  const filtersActive = categoryFilter !== "All" || difficultyFilter !== "All";
+  const isFiltering = query.trim().length > 0 || filtersActive;
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return templates.filter((template) => {
+      if (categoryFilter !== "All" && template.category !== categoryFilter) return false;
+      if (difficultyFilter !== "All" && template.difficulty !== difficultyFilter) return false;
+      if (q && !`${template.name} ${template.category}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [query, categoryFilter, difficultyFilter, templates]);
+
+  const recentTemplates = useMemo(() => templates.slice(0, 20), [templates]);
+
+  return (
+    <section className="relative m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
+      <header className="absolute inset-x-0 top-0 z-20 px-2 pb-5 pt-3">
+        <label className="flex h-16 touch-manipulation items-center gap-2.5 rounded-2xl bg-black/35 px-4 text-white shadow-[0_4px_14px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+          <Search className="h-5 w-5 shrink-0 text-white/70" />
+          <input
+            autoFocus
+            suppressHydrationWarning
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search templates"
+            aria-label="Search templates"
+            className="min-w-0 flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/50"
+          />
+          {query ? (
+            <button type="button" aria-label="Clear search" onClick={() => setQuery("")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/70 transition active:scale-90">
+              <X className="h-5 w-5" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label="Search filters"
+            aria-pressed={showFilters}
+            onClick={() => setShowFilters(true)}
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black text-white transition active:scale-90"
+          >
+            <SlidersHorizontal className="h-4.5 w-4.5" />
+            {filtersActive ? <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-white" /> : null}
+          </button>
+        </label>
+      </header>
+      <TemplateFeed templates={isFiltering ? results : recentTemplates} onOpenDetail={onOpenDetail} subscribed={subscribed} interactions={interactions} topPadding="pt-24" />
+      {showFilters ? (
+        <SearchFiltersSheet
+          categories={categories}
+          categoryFilter={categoryFilter}
+          onCategoryChange={setCategoryFilter}
+          difficultyFilter={difficultyFilter}
+          onDifficultyChange={setDifficultyFilter}
+          onClose={() => setShowFilters(false)}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function SearchFiltersSheet({
+  categories,
+  categoryFilter,
+  onCategoryChange,
+  difficultyFilter,
+  onDifficultyChange,
+  onClose,
+}: {
+  categories: string[];
+  categoryFilter: string;
+  onCategoryChange: (category: string) => void;
+  difficultyFilter: "All" | Template["difficulty"];
+  onDifficultyChange: (level: "All" | Template["difficulty"]) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DrawerContent>
+        <div aria-hidden="true" className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15" />
+        <DrawerTitle className="text-lg font-semibold tracking-tight">Filters</DrawerTitle>
+        <DrawerDescription className="sr-only">Filter templates by category and difficulty.</DrawerDescription>
+        <div className="mt-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-black/40">Category</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {["All", ...categories].map((category) => (
+              <button
+                key={category}
+                type="button"
+                onClick={() => onCategoryChange(category)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${categoryFilter === category ? "bg-black text-white" : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08]"}`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mt-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-black/40">Difficulty</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onDifficultyChange("All")}
+              className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${difficultyFilter === "All" ? "bg-black text-white" : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08]"}`}
+            >
+              All
+            </button>
+            {(["Easy", "Medium", "Advanced"] as const).map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => onDifficultyChange(level)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${difficultyFilter === level ? "bg-black text-white" : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08]"}`}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button type="button" onClick={onClose} className="mt-6 h-12 w-full rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.98]">Show results</button>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 function TemplateFeed(props: {
   dark?: boolean;
   templates: Template[];
   onOpenDetail: (template: Template) => void;
   subscribed: boolean;
   interactions: TemplateInteractions;
+  topPadding?: string;
 }) {
-  const { templates, dark = false } = props;
+  const { templates, dark = false, topPadding = "pt-2" } = props;
   const [quickTemplate, setQuickTemplate] = useState<Template | null>(null);
   const [quickOrigin, setQuickOrigin] = useState({ x: 0, y: 0 });
   const [quickActionTarget, setQuickActionTarget] = useState<QuickAction | null>(null);
@@ -789,7 +953,6 @@ function TemplateFeed(props: {
     save: { x: -100, y: -45 },
     download: { x: -108, y: 20 },
     share: { x: -78, y: 78 },
-    open: { x: -15, y: 105 },
   };
 
   const openQuickActions = (template: Template, x: number, y: number, pointerId?: number) => {
@@ -807,6 +970,13 @@ function TemplateFeed(props: {
     gesturePointerRef.current = null;
     setQuickActionTarget(null);
     setQuickTemplate(null);
+  };
+
+  const updateQuickActionTarget = (action: QuickAction | null) => {
+    setQuickActionTarget((current) => {
+      if (action && action !== current) triggerHaptic(6);
+      return action;
+    });
   };
 
   const showCardFeedback = (templateId: string, action: CardFeedback["action"], active: boolean) => {
@@ -839,7 +1009,7 @@ function TemplateFeed(props: {
       const distance = Math.hypot(x - (quickOrigin.x + offset.x), y - (quickOrigin.y + offset.y));
       return distance < current.distance ? { action, distance } : current;
     }, { action: null, distance: Number.POSITIVE_INFINITY });
-    return nearest.distance < 42 ? nearest.action : null;
+    return nearest.distance < 34 ? nearest.action : null;
   };
 
   const runQuickAction = (action: QuickAction) => {
@@ -861,8 +1031,6 @@ function TemplateFeed(props: {
         setSubscriptionTemplate(selectedTemplate);
       }
     }
-    if (action === "open") props.onOpenDetail(selectedTemplate);
-
     closeQuickActions();
 
     if (action === "share" || action === "save") {
@@ -877,16 +1045,21 @@ function TemplateFeed(props: {
     if (!quickTemplate || gesturePointerRef.current === null) return;
 
     const handlePointerMove = (event: PointerEvent) => {
-      if (event.pointerId === gesturePointerRef.current) setQuickActionTarget(actionAtPoint(event.clientX, event.clientY));
+      if (event.pointerId !== gesturePointerRef.current) return;
+      // Stop the browser from turning this drag into a page scroll — once that
+      // happens it fires pointercancel and the dial vanishes mid-selection.
+      event.preventDefault();
+      updateQuickActionTarget(actionAtPoint(event.clientX, event.clientY));
     };
     const handlePointerUp = (event: PointerEvent) => {
       if (event.pointerId !== gesturePointerRef.current) return;
+      event.preventDefault();
       const action = actionAtPoint(event.clientX, event.clientY);
       if (action) runQuickAction(action);
       else closeQuickActions();
     };
 
-    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
     window.addEventListener("pointerup", handlePointerUp, true);
     const handlePointerCancel = (event: PointerEvent) => {
       if (event.pointerId === gesturePointerRef.current) closeQuickActions();
@@ -901,7 +1074,7 @@ function TemplateFeed(props: {
   });
 
   return (
-    <div className={`relative m-0 h-full overscroll-y-contain p-2 pb-24 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${quickTemplate ? "overflow-hidden" : "overflow-y-auto"} ${dark ? "bg-black" : "bg-white"}`}>
+    <div className={`relative m-0 h-full overscroll-y-contain px-2 pb-24 ${topPadding} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${quickTemplate ? "overflow-hidden" : "overflow-y-auto"} ${dark ? "bg-black" : "bg-white"}`}>
       <div className="grid grid-cols-2 gap-2">
         {templates.map((template, index) => (
           <TemplateCard
@@ -925,13 +1098,21 @@ function TemplateFeed(props: {
             style={{ left: quickOrigin.x, top: quickOrigin.y }}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/15 bg-white/[0.06]" />
-            <QuickActionButton action="like" target={quickActionTarget} offset={actionOffsets.like} onTarget={setQuickActionTarget} onClick={() => runQuickAction("like")} ariaLabel="Like template" active={props.interactions.liked.has(quickTemplate.id)}><Heart className="h-6 w-6" fill={props.interactions.liked.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
-            <QuickActionButton action="save" target={quickActionTarget} offset={actionOffsets.save} onTarget={setQuickActionTarget} onClick={() => runQuickAction("save")} ariaLabel="Save template" active={props.interactions.saved.has(quickTemplate.id)}><Bookmark className="h-6 w-6" fill={props.interactions.saved.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
-            <QuickActionButton action="download" target={quickActionTarget} offset={actionOffsets.download} onTarget={setQuickActionTarget} onClick={() => runQuickAction("download")} ariaLabel="Download printable template">{downloadingId === quickTemplate.id ? <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.8} /> : <Download className="h-6 w-6" strokeWidth={1.8} />}</QuickActionButton>
-            <QuickActionButton action="share" target={quickActionTarget} offset={actionOffsets.share} onTarget={setQuickActionTarget} onClick={() => runQuickAction("share")} ariaLabel="Share template"><Share2 className="h-6 w-6" strokeWidth={1.8} /></QuickActionButton>
-            <QuickActionButton action="open" target={quickActionTarget} offset={actionOffsets.open} onTarget={setQuickActionTarget} onClick={() => runQuickAction("open")} ariaLabel="Open template"><ArrowUpRight className="h-6 w-6" strokeWidth={1.8} /></QuickActionButton>
-            {quickActionTarget ? <div className="pointer-events-none fixed z-[1301] whitespace-nowrap px-0 py-0 text-2xl font-semibold tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]" style={{ left: Math.max(quickOrigin.x - 160, 16), top: Math.min(Math.max(quickOrigin.y + 110, 16), window.innerHeight - 52) }}>{quickActionTarget[0].toUpperCase() + quickActionTarget.slice(1)}</div> : null}
+            <QuickActionButton action="like" target={quickActionTarget} offset={actionOffsets.like} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("like")} ariaLabel="Like template" active={props.interactions.liked.has(quickTemplate.id)}><Heart className="h-6 w-6" fill={props.interactions.liked.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
+            <QuickActionButton action="save" target={quickActionTarget} offset={actionOffsets.save} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("save")} ariaLabel="Save template" active={props.interactions.saved.has(quickTemplate.id)}><Bookmark className="h-6 w-6" fill={props.interactions.saved.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
+            <QuickActionButton action="download" target={quickActionTarget} offset={actionOffsets.download} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("download")} ariaLabel="Download printable template">{downloadingId === quickTemplate.id ? <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.8} /> : <Download className="h-6 w-6" strokeWidth={1.8} />}</QuickActionButton>
+            <QuickActionButton action="share" target={quickActionTarget} offset={actionOffsets.share} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("share")} ariaLabel="Share template"><Share2 className="h-6 w-6" strokeWidth={1.8} /></QuickActionButton>
+            {quickActionTarget ? (
+              <div
+                className="pointer-events-none fixed z-[1301] -translate-y-1/2 whitespace-nowrap px-0 py-0 text-5xl font-bold tracking-tight text-white drop-shadow-[0_3px_10px_rgba(0,0,0,0.45)]"
+                style={{
+                  left: Math.max(quickOrigin.x - 200, 16),
+                  top: Math.min(Math.max(quickOrigin.y - 210, 40), window.innerHeight - 40),
+                }}
+              >
+                {quickActionTarget[0].toUpperCase() + quickActionTarget.slice(1)}
+              </div>
+            ) : null}
           </div>
         </>
       ) : null}
@@ -942,7 +1123,7 @@ function TemplateFeed(props: {
   );
 }
 
-function TemplateCard({
+export function TemplateCard({
   template,
   onOpenDetail,
   onQuickActions,
@@ -1004,6 +1185,7 @@ function TemplateCard({
           clearHoldTimer();
           const rect = event.currentTarget.getBoundingClientRect();
           holdTimerRef.current = setTimeout(() => {
+            holdTimerRef.current = null;
             longPressRef.current = true;
             onQuickActions?.(template, rect.left + rect.width / 2, rect.top + rect.height / 2, event.pointerId);
           }, 450);
@@ -1021,7 +1203,7 @@ function TemplateCard({
           const rect = event.currentTarget.getBoundingClientRect();
           onQuickActions?.(template, rect.left + rect.width / 2, rect.top + rect.height / 2);
         }}
-        className="absolute bottom-2 right-2 z-10 flex h-9 w-9 touch-none items-center justify-center rounded-full bg-white text-black shadow-none transition active:scale-90"
+        className="absolute bottom-2 right-2 z-10 flex h-9 w-9 touch-none items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-xl shadow-none transition active:scale-90"
       >
         <MoreHorizontal className="h-5 w-5" strokeWidth={2.2} />
       </button>
@@ -1088,7 +1270,12 @@ function CollectionSheet({ template, interactions, onClose, onChange }: { templa
           <div className="mt-4 space-y-2">
             <button type="button" onClick={() => setCreating(true)} className="flex w-full items-center gap-3 rounded-xl bg-black px-4 py-3.5 text-left text-sm font-semibold text-white transition active:scale-[0.99]"><FolderPlus className="h-5 w-5" /> New collection</button>
               {interactions.collections.map((collection) => (
-                <button key={collection.id} type="button" disabled={saving} onClick={() => void saveToCollection({ collectionId: collection.id })} className="flex w-full items-center gap-3 rounded-xl bg-[#f2f2f2] px-4 py-3.5 text-left text-sm font-medium text-black/75 transition active:scale-[0.99] disabled:opacity-50"><Folder className="h-5 w-5 text-black/40" /><span>{collection.name}</span></button>
+                <button key={collection.id} type="button" disabled={saving} onClick={() => void saveToCollection({ collectionId: collection.id })} className="flex w-full items-center gap-3 rounded-xl bg-[#f2f2f2] px-3 py-2.5 text-left text-sm font-medium text-black/75 transition active:scale-[0.99] disabled:opacity-50">
+                  {collection.childAvatar && CHILD_AVATAR_SRC[collection.childAvatar]
+                    ? <Image src={CHILD_AVATAR_SRC[collection.childAvatar]} alt="" width={36} height={36} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                    : <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white"><Folder className="h-4 w-4 text-black/40" /></span>}
+                  <span className="min-w-0 truncate">{collection.name}</span>
+                </button>
               ))}
               {interactions.saved.has(template.id) ? <button type="button" disabled={saving} onClick={() => void removeSaved()} className="flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-medium text-black/45 transition active:scale-[0.99] disabled:opacity-50">Remove from saved</button> : null}
           </div>
@@ -1098,9 +1285,33 @@ function CollectionSheet({ template, interactions, onClose, onChange }: { templa
   );
 }
 
+export function LibraryQuickActions({ template, interactions, onClose }: { template: Template; interactions: TemplateInteractions; onClose: () => void }) {
+  const [panel, setPanel] = useState<"actions" | "save" | "share">("actions");
+  const [downloading, setDownloading] = useState(false);
+
+  if (panel === "save") return <CollectionSheet template={template} interactions={interactions} onClose={onClose} />;
+  if (panel === "share") return <ShareSheet template={template} onClose={onClose} />;
+
+  return (
+    <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DrawerContent>
+        <div aria-hidden="true" className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15" />
+        <DrawerTitle className="truncate text-lg font-semibold tracking-tight">{template.name}</DrawerTitle>
+        <DrawerDescription className="sr-only">Quick actions for {template.name}.</DrawerDescription>
+        <div className="mt-4 grid grid-cols-4 gap-2">
+          <button type="button" onClick={() => { void interactions.toggleLike(template.id); onClose(); }} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Heart className="h-5 w-5" fill={interactions.liked.has(template.id) ? "currentColor" : "none"} />{interactions.liked.has(template.id) ? "Unlike" : "Like"}</button>
+          <button type="button" onClick={() => setPanel("save")} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Bookmark className="h-5 w-5" fill={interactions.saved.has(template.id) ? "currentColor" : "none"} />Save</button>
+          <button type="button" disabled={downloading} onClick={() => { setDownloading(true); void downloadTemplate(template).finally(() => { setDownloading(false); onClose(); }); }} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium disabled:opacity-50">{downloading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}Download</button>
+          <button type="button" onClick={() => setPanel("share")} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Share2 className="h-5 w-5" />Share</button>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 function QuickActionButton({ action, target, offset, onTarget, onClick, ariaLabel, active, children }: { action: QuickAction; target: QuickAction | null; offset: { x: number; y: number }; onTarget?: (action: QuickAction) => void; onClick: () => void; ariaLabel: string; active?: boolean; children: ReactNode }) {
   return (
-    <button type="button" aria-label={ariaLabel} onPointerEnter={() => onTarget?.(action)} onFocus={() => onTarget?.(action)} onClick={onClick} style={{ left: offset.x, top: offset.y }} className={`quick-action-pop absolute flex h-[54px] w-[54px] -translate-x-1/2 -translate-y-1/2 transform-gpu items-center justify-center rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.3)] transition-[transform,background-color,color,box-shadow] duration-150 ease-out hover:scale-110 hover:bg-white hover:text-black focus-visible:scale-110 focus-visible:bg-white focus-visible:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 active:scale-95 ${target === action || active ? "scale-110 bg-white !text-black shadow-[0_10px_28px_rgba(0,0,0,0.4)]" : "bg-[#292a27] text-white"}`}>
+    <button type="button" aria-label={ariaLabel} onPointerEnter={() => onTarget?.(action)} onFocus={() => onTarget?.(action)} onClick={onClick} style={{ left: offset.x, top: offset.y }} className={`quick-action-pop absolute flex h-[60px] w-[60px] -translate-x-1/2 -translate-y-1/2 transform-gpu items-center justify-center rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.3)] transition-[transform,background-color,color,box-shadow] duration-150 ease-out hover:scale-110 hover:bg-white hover:text-black focus-visible:scale-110 focus-visible:bg-white focus-visible:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 active:scale-95 ${target === action || active ? "scale-110 bg-white !text-black shadow-[0_10px_28px_rgba(0,0,0,0.4)]" : "bg-[#292a27] text-white"}`}>
       {children}
     </button>
   );
@@ -1341,7 +1552,7 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
   const dark = active === "stories";
   const items: { tab: Tab; label: string; icon: NavIconName }[] = [
     { tab: "templates", label: "Templates", icon: "templates" },
-    { tab: "stories", label: "Stories", icon: "stories" },
+    { tab: "search", label: "Search", icon: "search" },
     // { tab: "products", label: "Products", icon: "products" },
     { tab: "profile", label: "Profile", icon: "profile" },
   ];
@@ -1351,7 +1562,7 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
       <div className="mx-auto flex w-auto items-center justify-center gap-2">
         {items.map((item) => {
           const isNowPlaying = item.tab === "stories" && nowPlaying && active === "stories";
-          const itemClassName = `pointer-events-auto flex h-14 flex-none cursor-pointer touch-manipulation select-none items-center justify-center gap-2 overflow-hidden rounded-2xl shadow-[0_4px_14px_rgba(0,0,0,0.16)] transition-all ${dark ? "bg-white text-black" : "bg-black text-white"} ${active === item.tab ? "w-auto scale-105 px-4" : "w-14 px-0 opacity-90 hover:opacity-100"}`;
+          const itemClassName = `pointer-events-auto flex h-14 flex-none cursor-pointer touch-manipulation select-none items-center justify-center gap-2 overflow-hidden rounded-2xl bg-black/35 text-white shadow-[0_4px_14px_rgba(0,0,0,0.16)] backdrop-blur-xl transition-all ${active === item.tab ? "w-auto scale-105 px-4" : "w-14 px-0 opacity-90 hover:opacity-100"}`;
 
           if (isNowPlaying) {
             return (
@@ -1408,28 +1619,30 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
   );
 }
 
-type NavIconName = "templates" | "browse" | "stories" | "products" | "profile";
+type NavIconName = "templates" | "browse" | "search" | "stories" | "products" | "profile";
 
 function NavIcon({ name, active, dark }: { name: NavIconName; active: boolean; dark: boolean }) {
   const Icon = name === "templates"
     ? LayoutTemplate
     : name === "browse"
       ? Compass
+      : name === "search"
+        ? Search
       : name === "stories"
         ? MoonStar
       : name === "products"
           ? Shapes
           : UserRound;
 
-  return <Icon aria-hidden="true" className={`h-6 w-6 ${dark ? "text-black" : "text-white"}`} fill={active ? "currentColor" : "none"} strokeWidth={1.8} />;
+  return <Icon aria-hidden="true" className="h-6 w-6 text-white" fill={active ? "currentColor" : "none"} strokeWidth={1.8} />;
 }
 
 function StoryThumbnailIcon({ story, progress, playing, dark, onTogglePlaying }: { story: Story; progress: number; playing: boolean; dark: boolean; onTogglePlaying: () => void }) {
   const size = 32;
   const strokeWidth = 2;
   const cornerRadius = 9;
-  const color = dark ? "#000000" : "#ffffff";
-  const track = dark ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.3)";
+  const color = "#ffffff";
+  const track = "rgba(255,255,255,0.3)";
   const fraction = story.duration > 0 ? Math.min(Math.max(progress / story.duration, 0), 1) : 0;
 
   return (
@@ -1482,19 +1695,12 @@ function StoryThumbnailIcon({ story, progress, playing, dark, onTogglePlaying }:
   );
 }
 
-function ProfileScreen({ templates, interactions, subscribed = false }: { templates: Template[]; interactions: TemplateInteractions; subscribed?: boolean }) {
+function ProfileScreen({ templates, interactions, subscribed = false, parentName = "", subscription = null, profileKids = [] }: { templates: Template[]; interactions: TemplateInteractions; subscribed?: boolean; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>();
-  const [libraryTab, setLibraryTab] = useState<"saved" | "liked">("saved");
-  const [openCollectionId, setOpenCollectionId] = useState<string | null>(null);
   const savedTemplates = templates.filter((template) => interactions.saved.has(template.id));
   const likedTemplates = templates.filter((template) => interactions.liked.has(template.id));
   const collectionCount = interactions.collections.filter((collection) => collection.templateIds.length > 0).length;
-  const openCollection = interactions.collections.find((collection) => collection.id === openCollectionId);
-  const openCollectionTemplates = openCollection?.templateIds.flatMap((id) => {
-    const template = templates.find((item) => item.id === id);
-    return template ? [template] : [];
-  }) ?? [];
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -1511,12 +1717,31 @@ function ProfileScreen({ templates, interactions, subscribed = false }: { templa
 
   if (!user) return <section className="h-full bg-white" aria-label="Loading profile" />;
 
-  const displayName = typeof user.user_metadata.full_name === "string"
+  const displayName = parentName || (typeof user.user_metadata.full_name === "string"
     ? user.user_metadata.full_name
     : typeof user.user_metadata.name === "string"
       ? user.user_metadata.name
-      : user.email?.split("@")[0] || "Your account";
+      : user.email?.split("@")[0] || "Your account");
   const initials = displayName.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+  const subscriptionPlan = subscription ? PLAN_DETAILS[subscription.planId] : null;
+  const subscriptionDate = subscription?.currentPeriodEnd
+    ? new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(new Date(subscription.currentPeriodEnd))
+    : null;
+  const subscriptionAmount = subscription
+    ? new Intl.NumberFormat("en-US", { style: "currency", currency: subscription.currency, maximumFractionDigits: 2 }).format(subscription.amount / 100)
+    : null;
+  const subscriptionStatus = subscription?.cancelAtPeriodEnd
+    ? subscriptionDate ? `Ending · ${subscriptionDate}` : "Ending"
+    : subscription?.status === "completed" && subscription.billingType === "one_time"
+      ? "Lifetime"
+      : subscription ? subscriptionDate ? `Active · Renews ${subscriptionDate}` : "Active" : "Inactive";
+  const subscriptionStatusTone = !subscription
+    ? "bg-black/[0.06] text-black/45"
+    : subscription.cancelAtPeriodEnd
+      ? "bg-red-100 text-red-700"
+      : subscription.billingType === "one_time"
+        ? "bg-blue-100 text-blue-700"
+        : "bg-emerald-100 text-emerald-700";
 
   const signOut = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -1542,21 +1767,37 @@ function ProfileScreen({ templates, interactions, subscribed = false }: { templa
         </div>
       </div>
 
-      <div className="mt-8">
+      <div className="mt-6 space-y-2">
+        <button type="button" onClick={() => router.push(subscribed ? "/subscription/manage" : "/subscription")} className="flex w-full items-start gap-3 rounded-2xl bg-[#f2f2f2] p-4 text-left transition active:scale-[0.98]">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white"><Gem className="h-5 w-5" /></span>
+          <span className="min-w-0 flex-1 pt-0.5">
+            <span className="flex items-center gap-2"><span className="truncate text-sm font-semibold">{subscriptionPlan ? `${subscriptionPlan.name} plan` : "Subscription"}</span><span className={`rounded-md px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${subscriptionStatusTone}`}>{subscriptionStatus}</span></span>
+            {subscription ? <span className="mt-1 block text-xs font-medium text-black/60">{subscriptionAmount} · {subscriptionPlan?.period}</span> : <span className="mt-1 block text-xs text-black/45">Choose a plan to unlock all templates</span>}
+          </span>
+          <ChevronRight className="mt-3.5 h-4 w-4 shrink-0 text-black/30" />
+        </button>
+        <button type="button" onClick={() => router.push("/onboarding")} className="flex w-full items-center gap-3 rounded-2xl bg-[#f2f2f2] p-4 text-left transition active:scale-[0.98]">
+          {profileKids.length ? <span className="flex shrink-0 -space-x-2">{profileKids.slice(0, 3).map((kid) => <Image key={kid.id} src={CHILD_AVATAR_SRC[kid.avatar] ?? "/avatars/avatar_01.png"} alt="" width={40} height={40} className="h-10 w-10 rounded-full border-2 border-[#f2f2f2] object-cover" />)}{profileKids.length > 3 ? <span className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#f2f2f2] bg-black text-[10px] font-semibold text-white">+{profileKids.length - 3}</span> : null}</span> : <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white"><UserRound className="h-5 w-5" /></span>}
+          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Manage kids</span><span className="mt-1 block truncate text-xs text-black/45">{profileKids.length ? profileKids.map((kid) => kid.name).join(", ") : "No kids added"}</span></span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-black/30" />
+        </button>
+      </div>
+
+      <div className="mt-5">
         <div className="flex gap-10 border-b border-black/[0.08]">
-          <button type="button" aria-pressed={libraryTab === "saved"} onClick={() => setLibraryTab("saved")} className={`flex h-10 w-32 items-center justify-start gap-1.5 border-b-2 px-1 text-left text-sm font-medium transition ${libraryTab === "saved" ? "border-black text-black" : "border-transparent text-black/40"}`}>
-            <Bookmark className="h-4 w-4" fill={libraryTab === "saved" ? "currentColor" : "none"} strokeWidth={2} />
+          <button type="button" aria-current="page" className="flex h-10 w-32 items-center justify-start gap-1.5 border-b-2 border-black px-1 text-left text-sm font-medium text-black">
+            <Bookmark className="h-4 w-4" fill="currentColor" strokeWidth={2} />
             <span>Collections</span>
-            <span className={`ml-0.5 flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 text-[10px] tabular-nums ${libraryTab === "saved" ? "bg-black text-white" : "bg-black/[0.06] text-black/40"}`}>{collectionCount}</span>
+            <span className="ml-0.5 flex h-5 min-w-5 items-center justify-center rounded-md bg-black px-1.5 text-[10px] tabular-nums text-white">{collectionCount}</span>
           </button>
-          <button type="button" aria-pressed={libraryTab === "liked"} onClick={() => { setLibraryTab("liked"); setOpenCollectionId(null); }} className={`flex h-10 w-32 items-center justify-start gap-1.5 border-b-2 px-1 text-left text-sm font-medium transition ${libraryTab === "liked" ? "border-black text-black" : "border-transparent text-black/40"}`}>
-            <Heart className="h-4 w-4" fill={libraryTab === "liked" ? "currentColor" : "none"} strokeWidth={2} />
+          <button type="button" onClick={() => router.push("/liked")} className="flex h-10 w-32 items-center justify-start gap-1.5 border-b-2 border-transparent px-1 text-left text-sm font-medium text-black/40 transition active:text-black">
+            <Heart className="h-4 w-4" strokeWidth={2} />
             <span>Liked</span>
-            <span className={`ml-0.5 flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 text-[10px] tabular-nums ${libraryTab === "liked" ? "bg-black text-white" : "bg-black/[0.06] text-black/40"}`}>{likedTemplates.length}</span>
+            <span className="ml-0.5 flex h-5 min-w-5 items-center justify-center rounded-md bg-black/[0.06] px-1.5 text-[10px] tabular-nums text-black/40">{likedTemplates.length}</span>
           </button>
         </div>
 
-        {libraryTab === "saved" && savedTemplates.length && !openCollection ? (
+        {savedTemplates.length ? (
           <div className="mt-5 grid grid-cols-2 gap-3">
             {interactions.collections.filter((collection) => collection.templateIds.length > 0).map((collection) => {
               const previews = collection.templateIds.flatMap((id) => {
@@ -1564,7 +1805,7 @@ function ProfileScreen({ templates, interactions, subscribed = false }: { templa
                 return template ? [template] : [];
               }).slice(0, 3);
               return (
-                <button key={collection.id} type="button" onClick={() => setOpenCollectionId(collection.id)} className="block min-w-0 rounded-2xl bg-[#f2f2f2] px-3 pb-3 pt-2 text-left transition active:scale-[0.98]">
+                <button key={collection.id} type="button" onClick={() => router.push(`/collections/${collection.id}`)} className="block min-w-0 rounded-2xl bg-[#f2f2f2] px-3 pb-3 pt-2 text-left transition active:scale-[0.98]">
                   <span className="relative block h-28 w-full" aria-hidden="true">
                     {previews.map((template, index) => (
                       <span
@@ -1572,7 +1813,7 @@ function ProfileScreen({ templates, interactions, subscribed = false }: { templa
                         className="absolute top-1 aspect-[9/16] w-14 overflow-hidden rounded-lg border-2 border-[#f2f2f2] bg-white"
                         style={{ left: (previews.length - 1 - index) * 16, zIndex: index + 1, transform: `rotate(${(index - (previews.length - 1) / 2) * 5}deg)` }}
                       >
-                        {template.galleryImages[0] ? <Image src={template.galleryImages[0]} alt="" fill sizes="56px" className="object-cover" /> : <video src={template.videoSrc} muted playsInline preload="metadata" className="h-full w-full object-cover" />}
+                        {template.galleryImages[0] ? <Image src={template.galleryImages[0]} alt="" fill sizes="56px" className="object-cover" /> : template.videoSrc ? <video src={template.videoSrc} muted playsInline preload="metadata" className="h-full w-full object-cover" /> : <span className="block h-full w-full bg-[#e8e6e1]" />}
                       </span>
                     ))}
                   </span>
@@ -1588,47 +1829,19 @@ function ProfileScreen({ templates, interactions, subscribed = false }: { templa
             })}
           </div>
         ) : null}
-        {libraryTab === "saved" && openCollection ? (
-          <div className="mt-5">
-            <button type="button" onClick={() => setOpenCollectionId(null)} className="flex items-center gap-2 text-left transition active:scale-[0.98]">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f2f2f2]"><ArrowLeft className="h-4 w-4" /></span>
-              <span>
-                <span className="block text-sm font-semibold">{openCollection.name}</span>
-                <span className="block text-xs text-black/40">{openCollectionTemplates.length} {openCollectionTemplates.length === 1 ? "template" : "templates"}</span>
-              </span>
-            </button>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {openCollectionTemplates.map((template) => (
-                <TemplateCard key={template.id} template={template} statusIcon="save" onOpenDetail={() => router.push(`/templates/${template.slug}`)} />
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {libraryTab === "liked" && likedTemplates.length ? (
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            {likedTemplates.map((template) => (
-              <TemplateCard key={template.id} template={template} statusIcon="like" onOpenDetail={() => router.push(`/templates/${template.slug}`)} />
-            ))}
-          </div>
-        ) : null}
-        {(libraryTab === "saved" ? savedTemplates : likedTemplates).length === 0 ? (
+        {savedTemplates.length === 0 ? (
           <div className="mt-4 flex flex-col items-center rounded-2xl bg-[#f2f2f2] px-5 py-9 text-center">
-            {libraryTab === "saved" ? <Bookmark className="h-6 w-6 text-black/30" /> : <Heart className="h-6 w-6 text-black/30" />}
-            <p className="mt-3 text-sm font-medium text-black/55">No {libraryTab} templates yet</p>
-            <p className="mt-1 text-xs text-black/35">They’ll appear here when you {libraryTab === "saved" ? "save" : "like"} one.</p>
+            <Bookmark className="h-6 w-6 text-black/30" />
+            <p className="mt-3 text-sm font-medium text-black/55">No saved templates yet</p>
+            <p className="mt-1 text-xs text-black/35">They’ll appear here when you save one.</p>
           </div>
         ) : null}
       </div>
 
-      {subscribed ? (
-        <button type="button" onClick={() => router.push("/subscription/manage")} className="mt-10 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black transition active:scale-[0.98]">
-          <Gem className="h-4 w-4" /> Manage subscription
-        </button>
-      ) : null}
+      <div className="mt-10">
+        <button type="button" onClick={signOut} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-red-600 transition active:scale-[0.98]"><LogOut className="h-4 w-4" /> Sign out</button>
+      </div>
 
-      <button type="button" onClick={signOut} className={`flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-red-600 transition active:scale-[0.98] ${subscribed ? "mt-3" : "mt-10"}`}>
-        <LogOut className="h-4 w-4" /> Sign out
-      </button>
     </section>
   );
 }
@@ -1678,17 +1891,27 @@ function TemplateGallery({ template, onClose }: { template: Template; onClose: (
 
 function DetailVideoPlayer({ template, active, onDownload, downloading }: { template: Template; active: boolean; onDownload: () => void; downloading: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const speedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gestureStartRef = useRef({ x: 0, y: 0 });
   const suppressTapRef = useRef(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoPlaying, setVideoPlaying] = useState(active);
+  const [youtubeCurrentTime, setYoutubeCurrentTime] = useState(0);
   const [muted, setMuted] = useState(false);
-  const [playing, setPlaying] = useState(active);
   const [speeding, setSpeeding] = useState(false);
   const videoSrc = template.videoSrc;
+  const videoEmbedUrl = template.videoEmbedUrl;
+  const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
+
+  const youtube = useYoutubePlayer(youtubeContainerRef, embed?.id ?? "", muted);
+  const playing = embed ? youtube.playing : videoPlaying;
+  const duration = embed ? youtube.duration : videoDuration;
+  const currentTime = embed ? youtubeCurrentTime : videoCurrentTime;
 
   useEffect(() => {
+    if (embed) return;
     const video = videoRef.current;
     if (!video) return;
     video.muted = muted;
@@ -1698,16 +1921,39 @@ function DetailVideoPlayer({ template, active, onDownload, downloading }: { temp
     }
 
     video.play().catch(() => undefined);
-  }, [active, muted]);
+  }, [active, muted, embed]);
+
+  const { ready: youtubeReady, play: youtubePlay, pause: youtubePause, getCurrentTime: youtubeGetCurrentTime } = youtube;
+
+  // Deliberately depends only on the stable play/pause functions, not the
+  // whole `youtube` object: that object's identity also changes whenever
+  // `playing` changes, which would re-run this on every manual pause/play
+  // and immediately re-force playback to match `active` (still true).
+  useEffect(() => {
+    if (!embed || !youtubeReady) return;
+    if (!active) {
+      youtubePause();
+      return;
+    }
+    youtubePlay();
+  }, [active, embed, youtubeReady, youtubePlay, youtubePause]);
 
   useEffect(() => {
     if (!active) return;
     const resumePlayback = () => {
-      if (document.visibilityState === "visible") videoRef.current?.play().catch(() => undefined);
+      if (document.visibilityState !== "visible") return;
+      if (embed) youtubePlay();
+      else videoRef.current?.play().catch(() => undefined);
     };
     document.addEventListener("visibilitychange", resumePlayback);
     return () => document.removeEventListener("visibilitychange", resumePlayback);
-  }, [active]);
+  }, [active, embed, youtubePlay]);
+
+  useEffect(() => {
+    if (!embed || !playing) return;
+    const interval = setInterval(() => setYoutubeCurrentTime(youtubeGetCurrentTime()), 250);
+    return () => clearInterval(interval);
+  }, [embed, playing, youtubeGetCurrentTime]);
 
   const formatTime = (seconds: number) => {
     if (!Number.isFinite(seconds)) return "0:00";
@@ -1722,41 +1968,63 @@ function DetailVideoPlayer({ template, active, onDownload, downloading }: { temp
 
   const stopSpeeding = () => {
     clearSpeedTimer();
-    const video = videoRef.current;
-    if (video) video.playbackRate = 1;
+    if (embed) youtube.setPlaybackRate(1);
+    else if (videoRef.current) videoRef.current.playbackRate = 1;
     setSpeeding(false);
+  };
+
+  const togglePlayback = () => {
+    if (embed) {
+      if (playing) youtube.pause();
+      else youtube.play();
+      return;
+    }
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play().catch(() => undefined);
+    else video.pause();
   };
 
   return (
     <div className="absolute inset-0 bg-black">
-      <video
-        ref={videoRef}
-        className="h-full w-full object-cover"
-        src={videoSrc}
-        autoPlay={active}
-        muted={muted}
-        loop
-        playsInline
-        preload={active ? "auto" : "metadata"}
-        disablePictureInPicture
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onCanPlay={(event) => { if (active) event.currentTarget.play().catch(() => undefined); }}
-        onLoadedData={(event) => { if (active) event.currentTarget.play().catch(() => undefined); }}
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || 0)}
-        onDurationChange={(event) => setDuration(event.currentTarget.duration || 0)}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+      {embed ? (
+        <div ref={youtubeContainerRef} className="h-full w-full overflow-hidden" />
+      ) : (
+        <video
+          ref={videoRef}
+          className="h-full w-full object-cover"
+          src={videoSrc ?? undefined}
+          autoPlay={active}
+          muted={muted}
+          loop
+          playsInline
+          preload={active ? "auto" : "metadata"}
+          disablePictureInPicture
+          onPlay={() => setVideoPlaying(true)}
+          onPause={() => setVideoPlaying(false)}
+          onCanPlay={(event) => { if (active) event.currentTarget.play().catch(() => undefined); }}
+          onLoadedData={(event) => { if (active) event.currentTarget.play().catch(() => undefined); }}
+          onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)}
+          onDurationChange={(event) => setVideoDuration(event.currentTarget.duration || 0)}
+          onTimeUpdate={(event) => setVideoCurrentTime(event.currentTarget.currentTime)}
+        />
+      )}
+      <div
+        className="absolute inset-0"
         onPointerDown={(event) => {
-          const video = event.currentTarget;
           gestureStartRef.current = { x: event.clientX, y: event.clientY };
           suppressTapRef.current = false;
           clearSpeedTimer();
-          const rect = video.getBoundingClientRect();
+          const rect = event.currentTarget.getBoundingClientRect();
           if (event.clientX < rect.left + rect.width / 2) return;
           speedTimerRef.current = setTimeout(() => {
             suppressTapRef.current = true;
-            video.playbackRate = 2;
-            video.play().catch(() => undefined);
+            if (embed) {
+              youtube.setPlaybackRate(2);
+            } else if (videoRef.current) {
+              videoRef.current.playbackRate = 2;
+              videoRef.current.play().catch(() => undefined);
+            }
             setSpeeding(true);
             triggerHaptic(12);
           }, 350);
@@ -1773,13 +2041,12 @@ function DetailVideoPlayer({ template, active, onDownload, downloading }: { temp
           if (speeding) stopSpeeding();
         }}
         onPointerCancel={stopSpeeding}
-        onClick={(event) => {
+        onClick={() => {
           if (suppressTapRef.current) {
             suppressTapRef.current = false;
             return;
           }
-          if (event.currentTarget.paused) event.currentTarget.play().catch(() => undefined);
-          else event.currentTarget.pause();
+          togglePlayback();
         }}
       />
       {speeding ? (
@@ -1814,8 +2081,13 @@ function DetailVideoPlayer({ template, active, onDownload, downloading }: { temp
             value={Math.min(currentTime, duration || 0)}
             onChange={(event) => {
               const nextTime = Number(event.target.value);
-              if (videoRef.current) videoRef.current.currentTime = nextTime;
-              setCurrentTime(nextTime);
+              if (embed) {
+                youtube.seekTo(nextTime);
+                setYoutubeCurrentTime(nextTime);
+              } else if (videoRef.current) {
+                videoRef.current.currentTime = nextTime;
+                setVideoCurrentTime(nextTime);
+              }
             }}
             className="h-5 min-w-0 flex-1 cursor-pointer accent-white"
           />
@@ -1836,33 +2108,64 @@ function DetailVideoPlayer({ template, active, onDownload, downloading }: { temp
 
 function ReelMedia({ template, eager = false }: { template: Template; eager?: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const videoSrc = template.videoSrc;
+  const videoEmbedUrl = template.videoEmbedUrl;
+  const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
+  const { play: youtubePlay, pause: youtubePause, ready: youtubeReady, playing: youtubeStarted } = useYoutubePlayer(youtubeContainerRef, embed?.id ?? "", true);
+  const intersectingRef = useRef(false);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    const target = embed ? youtubeContainerRef.current : videoRef.current;
+    if (!target) return;
 
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) video.play().catch(() => undefined);
-      else video.pause();
+      intersectingRef.current = entry.isIntersecting;
+      if (embed) {
+        if (entry.isIntersecting) youtubePlay();
+        else youtubePause();
+        return;
+      }
+      if (entry.isIntersecting) videoRef.current?.play().catch(() => undefined);
+      else videoRef.current?.pause();
     }, { rootMargin: "240px 0px", threshold: 0.01 });
 
-    observer.observe(video);
+    observer.observe(target);
     return () => observer.disconnect();
-  }, []);
+  }, [embed, youtubePlay, youtubePause]);
+
+  // The observer above only reports intersection changes; if the card was
+  // already visible before the YouTube player finished loading, that first
+  // callback fires as a no-op. Re-sync once the player becomes ready.
+  useEffect(() => {
+    if (!embed || !youtubeReady) return;
+    if (intersectingRef.current) youtubePlay();
+    else youtubePause();
+  }, [embed, youtubeReady, youtubePlay, youtubePause]);
 
   return (
     <div className="relative h-full w-full bg-black">
-      <video
-        ref={videoRef}
-        className="absolute inset-0 h-full w-full object-cover"
-        src={videoSrc}
-        muted
-        loop
-        playsInline
-        preload={eager ? "auto" : "metadata"}
-        disablePictureInPicture
-      />
+      {embed ? (
+        <>
+          <img
+            src={`https://i.ytimg.com/vi/${embed.id}/hqdefault.jpg`}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" style={{ opacity: youtubeStarted ? 1 : 0 }} />
+        </>
+      ) : (
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-cover"
+          src={videoSrc ?? undefined}
+          muted
+          loop
+          playsInline
+          preload={eager ? "auto" : "metadata"}
+          disablePictureInPicture
+        />
+      )}
     </div>
   );
 }

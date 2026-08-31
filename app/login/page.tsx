@@ -94,7 +94,7 @@ export default function LoginPage() {
   return (
     <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
       <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col bg-white px-5 pb-8 pt-5">
-        <button type="button" aria-label="Close login" onClick={() => router.back()} className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95">
+        <button type="button" aria-label="Close login" onClick={() => router.push("/")} className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95">
           <X className="h-5 w-5" />
         </button>
 

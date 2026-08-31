@@ -140,11 +140,11 @@ input {
     animation-duration: 1ms;
   }
 
-  .card-action-feedback > span {
+  .quick-action-pop {
     animation-duration: 1ms;
   }
 
-  .quick-action-pop {
+  .card-action-feedback > span {
     animation-duration: 1ms;
   }
 }

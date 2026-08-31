@@ -1,5 +1,6 @@
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
+import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 
 type CreateTemplateBody = {
   title?: unknown;
@@ -8,6 +9,7 @@ type CreateTemplateBody = {
   durationMinutes?: unknown;
   difficulty?: unknown;
   videoPath?: unknown;
+  videoUrl?: unknown;
   printablePath?: unknown;
   galleryPaths?: unknown;
   supplies?: unknown;
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
   const durationMinutes = Number(body.durationMinutes);
   const difficulty = typeof body.difficulty === "string" ? body.difficulty : "";
   const videoPath = typeof body.videoPath === "string" ? body.videoPath : "";
+  const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl.trim() : "";
   const printablePath = typeof body.printablePath === "string" ? body.printablePath : "";
   const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 10) : [];
   const supplies = Array.isArray(body.supplies)
@@ -57,7 +60,10 @@ export async function POST(request: Request) {
   if (!UUID_PATTERN.test(categoryId)) return Response.json({ error: "Choose a category." }, { status: 400 });
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) return Response.json({ error: "Enter a valid duration." }, { status: 400 });
   if (!DIFFICULTIES.has(difficulty)) return Response.json({ error: "Choose a difficulty." }, { status: 400 });
-  if (!videoPath.startsWith(ownedPrefix)) return Response.json({ error: "Upload a video." }, { status: 400 });
+  if (videoPath && videoUrl) return Response.json({ error: "Provide either a video upload or a video link, not both." }, { status: 400 });
+  if (!videoPath && !videoUrl) return Response.json({ error: "Add a template video." }, { status: 400 });
+  if (videoPath && !videoPath.startsWith(ownedPrefix)) return Response.json({ error: "Upload a video." }, { status: 400 });
+  if (videoUrl && !parseVideoEmbedUrl(videoUrl)) return Response.json({ error: "Paste a valid YouTube Shorts link." }, { status: 400 });
   if (!printablePath.startsWith(ownedPrefix)) return Response.json({ error: "Upload a printable PDF." }, { status: 400 });
   if (galleryPaths.some((path) => !path.startsWith(ownedPrefix))) return Response.json({ error: "Invalid gallery file." }, { status: 400 });
 
@@ -75,7 +81,8 @@ export async function POST(request: Request) {
       short_description: description,
       duration_minutes: durationMinutes,
       difficulty,
-      video_path: videoPath,
+      video_path: videoPath || null,
+      video_embed_url: videoUrl || null,
       printable_path: printablePath,
       thumbnail_path: galleryPaths[0] ?? null,
       status: "published",

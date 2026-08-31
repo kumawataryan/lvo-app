@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, LoaderCircle, X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -61,55 +61,43 @@ export function ManageSubscriptionScreen({ purchase }: { purchase: Purchase }) {
   };
 
   return (
-    <main className="fixed inset-0 h-[100dvh] max-h-screen overflow-hidden overscroll-none bg-black text-black">
-      <div className="mx-auto flex h-full max-h-screen w-full max-w-[430px] flex-col overflow-hidden bg-white">
-        <div className="flex shrink-0 items-center justify-between px-5 pb-2 pt-6">
+    <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
+      <div className="mx-auto min-h-dvh w-full max-w-[430px] bg-white px-5 pb-8 pt-5">
+        <header className="flex h-11 items-center justify-between">
           <h1 className="text-xl font-semibold tracking-tight">Subscription</h1>
-          <button type="button" aria-label="Close" onClick={() => router.back()} className="flex h-10 w-10 items-center justify-center rounded-full bg-black/5 transition active:scale-95">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+          <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/?tab=profile"); }} className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f2f2f2] transition active:scale-95"><X className="h-5 w-5" /></button>
+        </header>
 
-        <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-4">
-          <div className="rounded-2xl border-2 border-black/10 p-5">
-            <div className="flex items-center justify-between">
-              <p className="text-base font-semibold">{plan.name} plan</p>
-              <p className="text-base font-semibold tracking-tight">{formatAmount(purchase.amount, purchase.currency)}</p>
+        <section className="mt-8 rounded-2xl bg-black p-5 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-medium text-white/50">Current plan</p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight">{plan.name}</h2>
             </div>
-
-            {purchase.billing_type === "one_time" ? (
-              <p className="mt-2 text-sm text-black/55">
-                Lifetime access{purchasedOn ? ` — purchased on ${purchasedOn}` : ""}. No further action needed, and there&apos;s nothing to cancel.
-              </p>
-            ) : purchase.cancel_at_period_end ? (
-              <p className="mt-2 text-sm text-black/55">
-                Your plan won&apos;t renew.{renewsOn ? ` You'll keep access until ${renewsOn}.` : ""}
-              </p>
-            ) : (
-              <p className="mt-2 text-sm text-black/55">
-                {renewsOn ? `Renews automatically on ${renewsOn}.` : "Renews automatically each period."}
-              </p>
-            )}
+            <span className={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${purchase.cancel_at_period_end ? "bg-red-500/20 text-red-200" : purchase.billing_type === "one_time" ? "bg-blue-400/20 text-blue-200" : "bg-emerald-400/20 text-emerald-200"}`}>{purchase.cancel_at_period_end ? "Ending" : purchase.billing_type === "one_time" ? "Lifetime" : "Active"}</span>
           </div>
+          <p className="mt-6 text-2xl font-semibold tracking-tight">{formatAmount(purchase.amount, purchase.currency)} <span className="text-sm font-normal text-white/50">{purchase.billing_type === "one_time" ? "one-time" : plan.period}</span></p>
+          <p className="mt-2 text-xs text-white/50">{purchase.billing_type === "one_time" ? "Lifetime access. No recurring charges." : purchase.cancel_at_period_end ? `Access available until ${renewsOn ?? "the end of the billing period"}.` : renewsOn ? `Renews on ${renewsOn}.` : "Renews automatically."}</p>
+        </section>
+
+        <section className="mt-8" aria-label="Subscription details">
+          <h2 className="text-sm font-semibold">Plan details</h2>
+          <dl className="mt-3 divide-y divide-black/[0.07] rounded-2xl bg-[#f2f2f2] px-4">
+            <div className="flex items-center justify-between gap-6 py-4"><dt className="text-sm text-black/45">Billing cycle</dt><dd className="text-right text-sm font-medium">{purchase.billing_type === "one_time" ? "One-time" : plan.period.replace("per ", "Every ")}</dd></div>
+            <div className="flex items-center justify-between gap-6 py-4"><dt className="text-sm text-black/45">{purchase.cancel_at_period_end ? "Access ends" : purchase.billing_type === "one_time" ? "Expires" : "Next renewal"}</dt><dd className="text-right text-sm font-medium">{purchase.billing_type === "one_time" ? "Never" : renewsOn ?? "Not available"}</dd></div>
+            <div className="flex items-center justify-between gap-6 py-4"><dt className="text-sm text-black/45">Member since</dt><dd className="text-right text-sm font-medium">{purchasedOn ?? "Not available"}</dd></div>
+            <div className="flex items-center justify-between gap-6 py-4"><dt className="text-sm text-black/45">Payment provider</dt><dd className="text-right text-sm font-medium capitalize">{purchase.gateway}</dd></div>
+          </dl>
+        </section>
 
           {errorMessage ? <p className="mt-4 text-center text-xs font-medium text-red-600">{errorMessage}</p> : null}
 
           {purchase.billing_type === "subscription" && purchase.gateway === "etsy" ? (
-            <p className="mt-6 text-center text-xs text-black/45">
+            <p className="mt-6 rounded-2xl bg-[#f2f2f2] px-4 py-4 text-sm leading-6 text-black/55">
               This plan was activated manually after an Etsy purchase. Contact us to change or cancel it.
             </p>
           ) : purchase.billing_type === "subscription" && purchase.cancel_at_period_end ? (
-            purchase.gateway === "razorpay" ? (
-              <button
-                type="button"
-                onClick={() => runAction("/api/payments/resume")}
-                disabled={isProcessing}
-                className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:opacity-60"
-              >
-                {isProcessing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                Resume subscription
-              </button>
-            ) : null
+            <div className="mt-6 rounded-2xl bg-red-50 px-4 py-4 text-sm leading-6 text-red-800">Your access stays active until {renewsOn ?? "the end of the billing period"}. After that, you can choose a new plan.</div>
           ) : purchase.billing_type === "subscription" ? (
             confirmingCancel ? (
               <div className="mt-6 rounded-2xl bg-[#f2f2f2] p-4">
@@ -143,7 +131,6 @@ export function ManageSubscriptionScreen({ purchase }: { purchase: Purchase }) {
               </button>
             )
           ) : null}
-        </section>
       </div>
     </main>
   );

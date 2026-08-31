@@ -29,7 +29,8 @@ export type PublishedTemplate = {
   shortDescription: string;
   durationMinutes: number;
   difficulty: TemplateDifficulty;
-  videoUrl: string;
+  videoUrl: string | null;
+  videoEmbedUrl: string | null;
   thumbnailUrl: string | null;
   hasPrintable: boolean;
   isFeatured: boolean;

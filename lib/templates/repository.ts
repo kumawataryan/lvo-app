@@ -10,7 +10,8 @@ type TemplateRow = {
   short_description: string;
   duration_minutes: number;
   difficulty: TemplateDifficulty;
-  video_path: string;
+  video_path: string | null;
+  video_embed_url: string | null;
   thumbnail_path: string | null;
   printable_path: string | null;
   is_featured: boolean;
@@ -34,6 +35,7 @@ const templateSelection = `
   duration_minutes,
   difficulty,
   video_path,
+  video_embed_url,
   thumbnail_path,
   printable_path,
   is_featured,
@@ -58,7 +60,8 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     shortDescription: row.short_description,
     durationMinutes: row.duration_minutes,
     difficulty: row.difficulty,
-    videoUrl: publicMediaUrl(row.video_path)!,
+    videoUrl: publicMediaUrl(row.video_path),
+    videoEmbedUrl: row.video_embed_url,
     thumbnailUrl: publicMediaUrl(row.thumbnail_path),
     hasPrintable: Boolean(row.printable_path),
     isFeatured: row.is_featured,

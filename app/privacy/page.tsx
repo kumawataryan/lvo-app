@@ -8,7 +8,7 @@ export default function PrivacyPage() {
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-[600px] bg-white px-5 pb-16 pt-6 text-black">
-      <button type="button" aria-label="Back" onClick={() => router.back()} className="mb-6 flex h-10 w-10 items-center justify-center rounded-full bg-black/5 transition active:scale-95">
+      <button type="button" aria-label="Back" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="mb-6 flex h-10 w-10 items-center justify-center rounded-full bg-black/5 transition active:scale-95">
         <ChevronLeft className="h-5 w-5" />
       </button>
 

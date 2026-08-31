@@ -3,7 +3,7 @@ import "./globals.css";
 import { StoryPlayerProvider } from "@/components/story-player";
 
 export const metadata: Metadata = {
-  title: "Craft Library",
+  title: "Lovely Vibes Only Craft Library",
   description: "Premium art and craft templates for calm, easy making.",
 };
 
