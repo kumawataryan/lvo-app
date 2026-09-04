@@ -12,7 +12,7 @@ import type { PublishedTemplate } from "@/lib/templates/types";
 
 type CollectionInfo = { id: string; name: string; childAvatar: string | null };
 
-export function CollectionScreen({ collection, templates: publishedTemplates }: { collection: CollectionInfo; templates: PublishedTemplate[] }) {
+export function CollectionScreen({ collection, templates: publishedTemplates, subscribed }: { collection: CollectionInfo; templates: PublishedTemplate[]; subscribed: boolean }) {
   const router = useRouter();
   const templates = publishedTemplates.map(mapPublishedTemplate);
   const interactions = useTemplateInteractions();
@@ -85,7 +85,7 @@ export function CollectionScreen({ collection, templates: publishedTemplates }: 
         {templates.length ? <div className="mt-7 grid grid-cols-2 gap-2">{templates.map((template) => <TemplateCard key={template.id} template={template} statusIcon="save" onOpenDetail={() => router.push(`/templates/${template.slug}`)} onQuickActions={() => setQuickTemplate(template)} />)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No saved templates</div>}
       </div>
 
-      {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} onClose={() => setQuickTemplate(null)} /> : null}
+      {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} subscribed={subscribed} onClose={() => setQuickTemplate(null)} /> : null}
 
       {renameOpen ? <Drawer open onOpenChange={(open) => { if (!open && !renaming) setRenameOpen(false); }}>
         <DrawerContent>

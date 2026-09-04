@@ -5,12 +5,15 @@ import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 type CreateTemplateBody = {
   title?: unknown;
   description?: unknown;
-  categoryId?: unknown;
+  categoryIds?: unknown;
+  minimumAge?: unknown;
+  maximumAge?: unknown;
   durationMinutes?: unknown;
   difficulty?: unknown;
   videoPath?: unknown;
   videoUrl?: unknown;
   printablePath?: unknown;
+  isFree?: unknown;
   galleryPaths?: unknown;
   supplies?: unknown;
 };
@@ -43,21 +46,29 @@ export async function POST(request: Request) {
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const description = typeof body.description === "string" ? body.description.trim() : "";
-  const categoryId = typeof body.categoryId === "string" ? body.categoryId : "";
+  const categoryIds = Array.isArray(body.categoryIds)
+    ? [...new Set(body.categoryIds.filter((id): id is string => typeof id === "string"))].slice(0, 20)
+    : [];
+  const minimumAge = Number(body.minimumAge);
+  const maximumAge = Number(body.maximumAge);
   const durationMinutes = Number(body.durationMinutes);
   const difficulty = typeof body.difficulty === "string" ? body.difficulty : "";
   const videoPath = typeof body.videoPath === "string" ? body.videoPath : "";
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl.trim() : "";
   const printablePath = typeof body.printablePath === "string" ? body.printablePath : "";
+  const isFree = body.isFree === true;
   const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 10) : [];
   const supplies = Array.isArray(body.supplies)
     ? [...new Set(body.supplies.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 20)
     : [];
-  const ownedPrefix = `${user.id}/`;
+  const ownedPrefix = `/lvo-files/${user.id}/`;
 
   if (!title || title.length > 120) return Response.json({ error: "Add a title under 120 characters." }, { status: 400 });
   if (description.length > 280) return Response.json({ error: "Keep the description under 280 characters." }, { status: 400 });
-  if (!UUID_PATTERN.test(categoryId)) return Response.json({ error: "Choose a category." }, { status: 400 });
+  if (!categoryIds.length || categoryIds.some((id) => !UUID_PATTERN.test(id))) return Response.json({ error: "Choose at least one category." }, { status: 400 });
+  if (!Number.isInteger(minimumAge) || !Number.isInteger(maximumAge) || minimumAge < 0 || maximumAge > 18 || minimumAge > maximumAge) {
+    return Response.json({ error: "Enter a valid age range from 0 to 18." }, { status: 400 });
+  }
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) return Response.json({ error: "Enter a valid duration." }, { status: 400 });
   if (!DIFFICULTIES.has(difficulty)) return Response.json({ error: "Choose a difficulty." }, { status: 400 });
   if (videoPath && videoUrl) return Response.json({ error: "Provide either a video upload or a video link, not both." }, { status: 400 });
@@ -67,6 +78,15 @@ export async function POST(request: Request) {
   if (!printablePath.startsWith(ownedPrefix)) return Response.json({ error: "Upload a printable PDF." }, { status: 400 });
   if (galleryPaths.some((path) => !path.startsWith(ownedPrefix))) return Response.json({ error: "Invalid gallery file." }, { status: 400 });
 
+  const { data: validCategories, error: categoriesError } = await supabase
+    .from("template_categories")
+    .select("id")
+    .in("id", categoryIds)
+    .eq("is_active", true);
+  if (categoriesError || (validCategories ?? []).length !== categoryIds.length) {
+    return Response.json({ error: "Choose valid categories." }, { status: 400 });
+  }
+
   const templateId = crypto.randomUUID();
   let slug = slugify(title) || `template-${templateId.slice(0, 8)}`;
   const publishedAt = new Date().toISOString();
@@ -75,15 +95,17 @@ export async function POST(request: Request) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const result = await supabase.from("templates").insert({
       id: templateId,
-      category_id: categoryId,
       slug,
       title,
       short_description: description,
       duration_minutes: durationMinutes,
       difficulty,
+      minimum_age: minimumAge,
+      maximum_age: maximumAge,
       video_path: videoPath || null,
       video_embed_url: videoUrl || null,
       printable_path: printablePath,
+      is_free: isFree,
       thumbnail_path: galleryPaths[0] ?? null,
       status: "published",
       published_at: publishedAt,
@@ -98,6 +120,16 @@ export async function POST(request: Request) {
   if (insertError) return Response.json({ error: insertError.message }, { status: 400 });
 
   try {
+    const { error: categoryLinksError } = await supabase.from("template_category_assignments").insert(
+      categoryIds.map((categoryId, index) => ({
+        template_id: templateId,
+        category_id: categoryId,
+        is_primary: index === 0,
+        sort_order: index * 10,
+      })),
+    );
+    if (categoryLinksError) throw categoryLinksError;
+
     if (galleryPaths.length) {
       const { error } = await supabase.from("template_gallery_images").insert(
         galleryPaths.map((storagePath, index) => ({

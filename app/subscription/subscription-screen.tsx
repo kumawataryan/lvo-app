@@ -7,26 +7,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { loadRazorpayCheckout, type RazorpaySuccessResponse } from "@/lib/razorpay/checkout";
-import { GATEWAYS, PLAN_DETAILS, PLAN_ORDER, RAZORPAY_PLAN_DETAILS, etsyPrice, faviconUrl, type Gateway, type PlanId } from "@/lib/payments/plans";
+import { GATEWAYS, PLAN_DETAILS, PLAN_ORDER, RAZORPAY_PLAN_DETAILS, faviconUrl, type Gateway, type PlanId } from "@/lib/payments/plans";
 
 const benefits = [
   "Unlimited downloads",
   "Easy step-by-step crafts",
   "New activities regularly",
-  "Made for home and class",
-  "Print whenever you need",
+  "High-quality template files",
 ];
-
-const ETSY_SHOP_URL = process.env.NEXT_PUBLIC_ETSY_SHOP_URL || "";
 
 function planDisplay(planId: PlanId, gateway: Gateway | null) {
   const base = PLAN_DETAILS[planId];
   if (gateway === "razorpay") {
     const inr = RAZORPAY_PLAN_DETAILS[planId];
     return { name: base.name, period: base.period, price: inr.price, badge: inr.badge };
-  }
-  if (gateway === "etsy") {
-    return { name: base.name, period: base.period, price: etsyPrice(planId).price, badge: base.badge };
   }
   return { name: base.name, period: base.period, price: base.price, badge: base.badge };
 }
@@ -37,7 +31,6 @@ export function SubscriptionScreen() {
   const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [etsyRequested, setEtsyRequested] = useState(false);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -57,8 +50,13 @@ export function SubscriptionScreen() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("paypal") === "cancelled") setErrorMessage("Checkout was cancelled.");
-    else if (params.get("paypal") === "error") setErrorMessage("We couldn't confirm your payment. Contact support if you were charged.");
+    const provider = params.has("stripe") ? "stripe" : "paypal";
+    const result = params.get(provider);
+    if (result !== "cancelled" && result !== "error") return;
+    const timeout = window.setTimeout(() => {
+      setErrorMessage(result === "cancelled" ? "Checkout was cancelled." : "We couldn't confirm your payment. Contact support if you were charged.");
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   const startRazorpayCheckout = async () => {
@@ -144,8 +142,8 @@ export function SubscriptionScreen() {
     window.location.href = data.approveUrl;
   };
 
-  const requestEtsyActivation = async () => {
-    const response = await fetch("/api/payments/etsy/request", {
+  const startStripeCheckout = async () => {
+    const response = await fetch("/api/payments/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ planId: selectedPlan }),
@@ -157,15 +155,12 @@ export function SubscriptionScreen() {
     }
 
     const data = await response.json();
-    if (!response.ok) {
-      setErrorMessage(data.error || "Something went wrong. Please try again.");
+    if (!response.ok || !data.checkoutUrl) {
+      setErrorMessage(data.error || "Unable to start checkout. Please try again.");
       setIsProcessing(false);
       return;
     }
-
-    setEtsyRequested(true);
-    setIsProcessing(false);
-    if (ETSY_SHOP_URL) window.open(ETSY_SHOP_URL, "_blank", "noopener,noreferrer");
+    window.location.href = data.checkoutUrl;
   };
 
   const startCheckout = async () => {
@@ -176,7 +171,7 @@ export function SubscriptionScreen() {
     try {
       if (selectedGateway === "razorpay") await startRazorpayCheckout();
       else if (selectedGateway === "paypal") await startPaypalCheckout();
-      else await requestEtsyActivation();
+      else await startStripeCheckout();
     } catch {
       setErrorMessage("Unable to start checkout. Please try again.");
       setIsProcessing(false);
@@ -184,9 +179,9 @@ export function SubscriptionScreen() {
   };
 
   return (
-    <main className="fixed inset-0 h-[100dvh] max-h-[100vh] overflow-hidden overscroll-none bg-black text-black">
-      <div className="mx-auto flex h-full max-h-[100vh] w-full max-w-[430px] flex-col overflow-hidden bg-white">
-        <div className="shrink-0 px-4 pt-4">
+    <main className="fixed inset-0 h-[100dvh] overflow-y-auto overscroll-contain bg-white text-black">
+      <div className="mx-auto min-h-full w-full max-w-[430px] bg-white">
+        <div className="px-4 pt-4">
           <section className="relative aspect-video w-full overflow-hidden rounded-[28px] bg-black [clip-path:inset(0_round_28px)]">
             <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="absolute right-3 top-3 z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-black/70 text-white backdrop-blur-sm transition active:scale-95">
               <X className="h-6 w-6" />
@@ -207,7 +202,7 @@ export function SubscriptionScreen() {
           </section>
         </div>
 
-        <section className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white px-5 pb-6 pt-5">
+        <section className="bg-white px-5 pb-6 pt-5">
           <div className="mx-auto max-w-sm space-y-2.5">
             {benefits.map((benefit) => (
               <div key={benefit} className="flex items-center gap-3 text-sm font-medium text-black/72">
@@ -265,7 +260,6 @@ export function SubscriptionScreen() {
                   aria-pressed={isSelected}
                   onClick={() => {
                     setSelectedGateway(gateway.id);
-                    setEtsyRequested(false);
                     setErrorMessage(null);
                   }}
                   className={`flex flex-col items-center gap-1.5 rounded-2xl border-[3px] py-3 transition active:scale-[0.97] ${
@@ -279,32 +273,19 @@ export function SubscriptionScreen() {
             })}
           </div>
 
-          {selectedGateway === "etsy" ? (
-            <p className="mt-2.5 text-center text-[11px] leading-snug text-black/45">
-              {etsyRequested
-                ? "Noted! Complete your purchase on Etsy — we'll activate your subscription within 24 hours."
-                : "Buy on Etsy, then we'll activate your subscription by hand — usually within 24 hours."}
-            </p>
-          ) : null}
         </section>
 
-        <section className="shrink-0 bg-white px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <section className="bg-white px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           {errorMessage ? <p className="mb-2 text-center text-xs font-medium text-red-600">{errorMessage}</p> : null}
 
           <button
             type="button"
             onClick={startCheckout}
-            disabled={isProcessing || !selectedGateway || (selectedGateway === "etsy" && etsyRequested)}
+            disabled={isProcessing || !selectedGateway}
             className="flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-black text-base font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition active:scale-[0.99] disabled:opacity-40"
           >
             {isProcessing ? <LoaderCircle className="h-5 w-5 animate-spin" /> : null}
-            {isProcessing
-              ? "Processing…"
-              : etsyRequested && selectedGateway === "etsy"
-                ? "Request sent"
-                : selectedGateway === "etsy"
-                  ? "Open Etsy & notify us"
-                  : "Continue"}
+            {isProcessing ? "Processing…" : "Continue"}
           </button>
 
           <p className="mx-auto mt-3 max-w-xs text-center text-[9px] leading-snug text-black/25">

@@ -18,6 +18,8 @@ export function useYoutubePlayer(
   containerRef: RefObject<HTMLDivElement | null>,
   videoId: string,
   muted: boolean,
+  compactChrome = false,
+  loop = true,
 ): YoutubePlayerHandle {
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const [ready, setReady] = useState(false);
@@ -49,7 +51,9 @@ export function useYoutubePlayer(
         events: {
           onReady: () => {
             if (destroyed) return;
-            player.getIframe().style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;";
+            player.getIframe().style.cssText = compactChrome
+              ? "position:absolute;left:50%;top:50%;width:135%;height:135%;border:0;pointer-events:none;transform:translate(-50%,-50%) scale(.740741);"
+              : "position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;";
             playerRef.current = player;
             setReady(true);
           },
@@ -58,10 +62,14 @@ export function useYoutubePlayer(
               setPlaying(true);
               setDuration(player.getDuration());
             } else if (event.data === 0) {
-              // Loop manually instead of using playerVars.loop/playlist,
-              // which makes YouTube show playlist prev/next chrome.
-              player.seekTo(0, true);
-              player.playVideo();
+              if (loop) {
+                // Loop manually instead of using playerVars.loop/playlist,
+                // which makes YouTube show playlist prev/next chrome.
+                player.seekTo(0, true);
+                player.playVideo();
+              } else {
+                setPlaying(false);
+              }
             } else if (event.data === 2) {
               setPlaying(false);
             }
@@ -79,7 +87,7 @@ export function useYoutubePlayer(
       setPlaying(false);
       setDuration(0);
     };
-  }, [containerRef, videoId]);
+  }, [compactChrome, containerRef, loop, videoId]);
 
   useEffect(() => {
     if (!ready) return;

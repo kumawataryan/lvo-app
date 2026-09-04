@@ -94,7 +94,7 @@ export function ManageSubscriptionScreen({ purchase }: { purchase: Purchase }) {
 
           {purchase.billing_type === "subscription" && purchase.gateway === "etsy" ? (
             <p className="mt-6 rounded-2xl bg-[#f2f2f2] px-4 py-4 text-sm leading-6 text-black/55">
-              This plan was activated manually after an Etsy purchase. Contact us to change or cancel it.
+              This legacy plan was activated manually. Contact us to change or cancel it.
             </p>
           ) : purchase.billing_type === "subscription" && purchase.cancel_at_period_end ? (
             <div className="mt-6 rounded-2xl bg-red-50 px-4 py-4 text-sm leading-6 text-red-800">Your access stays active until {renewsOn ?? "the end of the billing period"}. After that, you can choose a new plan.</div>

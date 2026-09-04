@@ -83,7 +83,7 @@ export async function getActivePurchase(supabase: SupabaseClient, userId: string
   const { data, error } = await supabase
     .from("purchases")
     .select(
-      "id, plan_id, billing_type, gateway, status, amount, currency, razorpay_subscription_id, paypal_subscription_id, current_period_end, cancel_at_period_end, created_at",
+      "id, plan_id, billing_type, gateway, status, amount, currency, razorpay_subscription_id, paypal_subscription_id, external_reference, current_period_end, cancel_at_period_end, created_at",
     )
     .eq("user_id", userId)
     .in("status", ["active", "completed"])

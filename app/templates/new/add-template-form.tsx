@@ -1,47 +1,44 @@
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { ChevronDown, FileText, Images, Link2, LoaderCircle, Plus, Video, X } from "lucide-react";
+import { Check, ChevronDown, FileText, Images, Link2, LoaderCircle, Plus, Upload, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 
-type Category = { id: string; name: string };
-type UploadRecord = { bucket: "template-media" | "template-printables"; path: string };
+type Category = { id: string; name: string; parentId: string | null };
+type UploadRecord = { path: string };
 
 function fileExtension(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "");
   return extension || (file.type === "application/pdf" ? "pdf" : "bin");
 }
 
-export function AddTemplateForm({ categories, userId }: { categories: Category[]; userId: string }) {
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function AddTemplateForm({ categories }: { categories: Category[] }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [openCategoryId, setOpenCategoryId] = useState(categories.find((category) => !category.parentId)?.id ?? "");
+  const [minimumAge, setMinimumAge] = useState("4");
+  const [maximumAge, setMaximumAge] = useState("8");
   const [duration, setDuration] = useState("15");
   const [difficulty, setDifficulty] = useState("easy");
   const [supplies, setSupplies] = useState("");
-  const [videoMode, setVideoMode] = useState<"upload" | "link">("upload");
-  const [video, setVideo] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState("");
   const [printable, setPrintable] = useState<File | null>(null);
+  const [isFree, setIsFree] = useState(false);
   const [gallery, setGallery] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-
-  const selectVideo = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    if (file && file.size > 100 * 1024 * 1024) {
-      setError("Video must be smaller than 100 MB.");
-      event.target.value = "";
-      return;
-    }
-    setError("");
-    setVideo(file);
-  };
 
   const selectPrintable = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -65,38 +62,55 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
     setGallery(files);
   };
 
-  const videoLinkEmbed = videoMode === "link" ? parseVideoEmbedUrl(videoUrl) : null;
-  const videoReady = videoMode === "upload" ? Boolean(video) : Boolean(videoLinkEmbed);
+  const videoLinkEmbed = parseVideoEmbedUrl(videoUrl);
+  const videoReady = Boolean(videoLinkEmbed);
+  const ageRangeValid = Number.isInteger(Number(minimumAge))
+    && Number.isInteger(Number(maximumAge))
+    && Number(minimumAge) >= 0
+    && Number(maximumAge) <= 18
+    && Number(minimumAge) <= Number(maximumAge);
+  const rootCategories = categories.filter((category) => !category.parentId);
+
+  const toggleCategory = (categoryId: string) => {
+    setCategoryIds((current) => current.includes(categoryId)
+      ? current.filter((id) => id !== categoryId)
+      : [...current, categoryId]);
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!videoReady || !printable || !title.trim() || !categoryId) return;
+    if (!videoReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid) return;
 
     setSubmitting(true);
     setError("");
     setStatus("Uploading files…");
-    const supabase = createSupabaseBrowserClient();
     const uploadGroup = crypto.randomUUID();
     const uploaded: UploadRecord[] = [];
 
-    const upload = async (bucket: UploadRecord["bucket"], folder: string, file: File, index?: number) => {
-      const suffix = index === undefined ? "" : `-${index + 1}`;
-      const path = `${userId}/${uploadGroup}/${folder}${suffix}.${fileExtension(file)}`;
-      const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
-        cacheControl: "31536000",
-        contentType: file.type,
-        upsert: false,
+    const upload = async (folder: "printable" | "gallery", file: File, index?: number) => {
+      const linkResponse = await fetch("/api/dropbox/upload-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadGroup, folder, extension: fileExtension(file), index }),
       });
-      if (uploadError) throw uploadError;
-      uploaded.push({ bucket, path });
+      const linkResult = await linkResponse.json() as { path?: string; uploadUrl?: string; error?: string };
+      if (!linkResponse.ok || !linkResult.path || !linkResult.uploadUrl) throw new Error(linkResult.error || "Could not prepare file upload.");
+
+      const uploadResponse = await fetch(linkResult.uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: file,
+      });
+      if (!uploadResponse.ok) throw new Error(`Dropbox upload failed (${uploadResponse.status}).`);
+      const path = linkResult.path;
+      uploaded.push({ path });
       return path;
     };
 
     try {
-      const [videoPath, printablePath, galleryPaths] = await Promise.all([
-        videoMode === "upload" && video ? upload("template-media", "video", video) : Promise.resolve(""),
-        upload("template-printables", "printable", printable),
-        Promise.all(gallery.map((file, index) => upload("template-media", "gallery", file, index))),
+      const [printablePath, galleryPaths] = await Promise.all([
+        upload("printable", printable),
+        Promise.all(gallery.map((file, index) => upload("gallery", file, index))),
       ]);
 
       setStatus("Publishing template…");
@@ -106,12 +120,14 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim(),
-          categoryId,
+          categoryIds,
+          minimumAge: Number(minimumAge),
+          maximumAge: Number(maximumAge),
           durationMinutes: Number(duration),
           difficulty,
-          videoPath: videoMode === "upload" ? videoPath : undefined,
-          videoUrl: videoMode === "link" ? videoUrl.trim() : undefined,
+          videoUrl: videoUrl.trim(),
           printablePath,
+          isFree,
           galleryPaths,
           supplies: supplies.split(",").map((item) => item.trim()).filter(Boolean),
         }),
@@ -123,7 +139,13 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
       router.replace(`/templates/${result.slug}`);
       router.refresh();
     } catch (caughtError) {
-      await Promise.allSettled(uploaded.map(({ bucket, path }) => supabase.storage.from(bucket).remove([path])));
+      if (uploaded.length) {
+        await fetch("/api/dropbox/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths: uploaded.map(({ path }) => path) }),
+        }).catch(() => undefined);
+      }
       setError(caughtError instanceof Error ? caughtError.message : "Could not add this template.");
       setStatus("");
       setSubmitting(false);
@@ -145,26 +167,13 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
 
         <div className="mt-7 space-y-5">
           <Field label="Video">
-            <div className="mb-2.5 grid grid-cols-2 gap-1 rounded-xl bg-[#f2f2f2] p-1">
-              <button type="button" onClick={() => setVideoMode("upload")} className={`h-9 rounded-lg text-sm font-medium transition ${videoMode === "upload" ? "bg-white shadow-sm" : "text-black/50"}`}>Upload video</button>
-              <button type="button" onClick={() => setVideoMode("link")} className={`h-9 rounded-lg text-sm font-medium transition ${videoMode === "link" ? "bg-white shadow-sm" : "text-black/50"}`}>Paste link</button>
-            </div>
-            {videoMode === "upload" ? (
-              <FilePicker
-                required={videoMode === "upload"}
-                icon={<Video className="h-5 w-5" />}
-                title={video ? video.name : "Add template video"}
-                detail={video ? `${(video.size / 1024 / 1024).toFixed(1)} MB` : "MP4 or WebM · up to 100 MB"}
-                accept="video/mp4,video/webm"
-                onChange={selectVideo}
-              />
-            ) : (
-              <>
+            <div className="flex gap-3">
+              <div className="min-w-0 flex-1">
                 <div className="relative">
                   <Link2 aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" strokeWidth={2.25} />
                   <input
                     type="url"
-                    required={videoMode === "link"}
+                    required
                     value={videoUrl}
                     onChange={(event) => { setVideoUrl(event.target.value); setError(""); }}
                     placeholder="YouTube Shorts link"
@@ -174,8 +183,19 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
                 <p className="mt-1.5 text-xs text-black/35">
                   {videoUrl && !videoLinkEmbed ? "Paste a valid YouTube Shorts link." : "youtube.com/shorts/… or youtu.be/…"}
                 </p>
-              </>
-            )}
+              </div>
+              {videoLinkEmbed ? (
+                <div className="aspect-9/16 w-19 shrink-0 overflow-hidden rounded-xl bg-black">
+                  <iframe
+                    key={videoLinkEmbed.id}
+                    src={`https://www.youtube-nocookie.com/embed/${videoLinkEmbed.id}?autoplay=1&mute=1&loop=1&playlist=${videoLinkEmbed.id}&controls=0&rel=0&modestbranding=1&playsinline=1`}
+                    title="Video preview"
+                    className="h-full w-full border-0"
+                    allow="autoplay; encrypted-media"
+                  />
+                </div>
+              ) : null}
+            </div>
           </Field>
 
           <Field label="Title">
@@ -186,14 +206,48 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
             <textarea maxLength={280} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A simple activity with clear steps." className="w-full resize-none rounded-xl bg-[#f2f2f2] px-4 py-3 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
           </Field>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <Field label="Category">
-              <div className="relative">
-                <select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="h-12 w-full appearance-none rounded-xl bg-[#f2f2f2] py-0 pl-4 pr-10 text-sm outline-none ring-black/10 transition focus:ring-2">
-                  {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                </select>
-                <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-black/60" strokeWidth={2.25} />
+          <Field label="Categories">
+            <button type="button" onClick={() => setCategoryPickerOpen(true)} className="flex h-12 w-full items-center rounded-xl bg-[#f2f2f2] px-4 text-left transition active:scale-[0.99]">
+              <span className={`min-w-0 flex-1 truncate text-sm ${categoryIds.length ? "font-medium text-black" : "text-black/35"}`}>
+                {categoryIds.length ? `${categoryIds.length} selected` : "Choose categories"}
+              </span>
+              <ChevronDown aria-hidden="true" className="h-4 w-4 text-black/40" />
+            </button>
+            {categoryIds.length ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {categoryIds.map((id) => {
+                  const category = categories.find((item) => item.id === id);
+                  return category ? (
+                    <button key={id} type="button" onClick={() => toggleCategory(id)} className="inline-flex items-center gap-1 rounded-lg bg-black px-2.5 py-1.5 text-xs font-medium text-white">
+                      {category.name}<X aria-hidden="true" className="h-3 w-3 text-white/65" />
+                    </button>
+                  ) : null;
+                })}
               </div>
+            ) : null}
+          </Field>
+
+          <Field label="Age range">
+            <div className="flex items-center gap-2">
+              <input required aria-label="Minimum age" type="number" min={0} max={18} inputMode="numeric" value={minimumAge} onChange={(event) => setMinimumAge(event.target.value)} className="h-12 min-w-0 flex-1 rounded-xl bg-[#f2f2f2] px-4 text-center text-sm outline-none ring-black/10 transition focus:ring-2" />
+              <span className="text-xs text-black/35">to</span>
+              <input required aria-label="Maximum age" type="number" min={0} max={18} inputMode="numeric" value={maximumAge} onChange={(event) => setMaximumAge(event.target.value)} className="h-12 min-w-0 flex-1 rounded-xl bg-[#f2f2f2] px-4 text-center text-sm outline-none ring-black/10 transition focus:ring-2" />
+            </div>
+            <p className="mt-1.5 text-xs text-black/35">Years</p>
+          </Field>
+
+          <Field label="Access">
+            <button type="button" role="switch" aria-checked={isFree} onClick={() => setIsFree((value) => !value)} className="flex h-12 w-full items-center justify-between rounded-xl bg-[#f2f2f2] px-4 text-sm font-medium">
+              <span>Free download</span>
+              <span className={`relative h-6 w-11 rounded-full transition ${isFree ? "bg-black" : "bg-black/15"}`}>
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${isFree ? "left-6" : "left-1"}`} />
+              </span>
+            </button>
+          </Field>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <Field label="Time in minutes">
+              <input required type="number" min={1} max={1440} inputMode="numeric" value={duration} onChange={(event) => setDuration(event.target.value)} className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition focus:ring-2" />
             </Field>
             <Field label="Difficulty">
               <div className="relative">
@@ -207,51 +261,122 @@ export function AddTemplateForm({ categories, userId }: { categories: Category[]
             </Field>
           </div>
 
-          <Field label="Time in minutes">
-            <input required type="number" min={1} max={1440} inputMode="numeric" value={duration} onChange={(event) => setDuration(event.target.value)} className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition focus:ring-2" />
-          </Field>
-
           <Field label="Supplies" optional>
             <input value={supplies} onChange={(event) => setSupplies(event.target.value)} placeholder="Paper, scissors, glue" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
             <p className="mt-1.5 text-xs text-black/35">Separate items with commas.</p>
           </Field>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <FilePicker required compact icon={<FileText className="h-5 w-5" />} title={printable ? printable.name : "Printable PDF"} detail={printable ? "Selected" : "Required · up to 25 MB"} accept="application/pdf" onChange={selectPrintable} />
-            <FilePicker compact multiple icon={<Images className="h-5 w-5" />} title={gallery.length ? `${gallery.length} image${gallery.length === 1 ? "" : "s"}` : "Gallery images"} detail={gallery.length ? "Selected" : "Optional · up to 10"} accept="image/jpeg,image/png,image/webp" onChange={selectGallery} />
-          </div>
+          <Field label="Files">
+            <div className="space-y-2.5">
+              <FilePicker
+                required
+                icon={<FileText className="h-5 w-5" />}
+                title={printable?.name ?? "Printable PDF"}
+                detail={printable ? `${formatFileSize(printable.size)} · Ready to upload` : "Required · PDF · up to 25 MB"}
+                selected={Boolean(printable)}
+                accept="application/pdf"
+                onChange={selectPrintable}
+              />
+              <FilePicker
+                multiple
+                icon={<Images className="h-5 w-5" />}
+                title={gallery.length ? `${gallery.length} gallery image${gallery.length === 1 ? "" : "s"}` : "Gallery images"}
+                detail={gallery.length ? `${formatFileSize(gallery.reduce((total, file) => total + file.size, 0))} · Ready to upload` : "Optional · JPG, PNG or WebP · up to 10"}
+                selected={Boolean(gallery.length)}
+                accept="image/jpeg,image/png,image/webp"
+                onChange={selectGallery}
+              />
+            </div>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-black/35">
+              <Upload aria-hidden="true" className="h-3.5 w-3.5" />
+              Files upload securely to Dropbox when you publish.
+            </p>
+          </Field>
         </div>
 
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-        <button type="submit" disabled={submitting || !videoReady || !printable || !title.trim() || !categoryId} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
+        <button type="submit" disabled={submitting || !videoReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
           {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : <><Plus className="h-4 w-4" />Publish template</>}
         </button>
       </form>
+      <Drawer open={categoryPickerOpen} onOpenChange={setCategoryPickerOpen}>
+        <DrawerContent>
+          <DrawerTitle className="text-lg font-semibold tracking-tight">Categories</DrawerTitle>
+          <DrawerDescription className="sr-only">Choose one or more categories for this template.</DrawerDescription>
+          <div className="mt-4 max-h-[60dvh] space-y-2 overflow-y-auto">
+            {rootCategories.map((root) => {
+              const children = categories.filter((category) => category.parentId === root.id);
+              const options = children.length ? children : [root];
+              const selectedCount = options.filter((category) => categoryIds.includes(category.id)).length;
+              const open = openCategoryId === root.id;
+              return (
+                <div key={root.id} className="rounded-2xl bg-[#f2f2f2]">
+                  <button type="button" aria-expanded={open} onClick={() => setOpenCategoryId(open ? "" : root.id)} className="flex h-12 w-full items-center px-4 text-left">
+                    <span className="min-w-0 flex-1 text-sm font-semibold">{root.name}</span>
+                    {selectedCount ? <span className="mr-2 text-xs font-medium text-black/45">{selectedCount}</span> : null}
+                    <ChevronDown aria-hidden="true" className={`h-4 w-4 text-black/35 transition-transform ${open ? "rotate-180" : ""}`} />
+                  </button>
+                  {open ? (
+                    <div className="flex flex-wrap gap-2 px-3 pb-3">
+                      {options.map((category) => {
+                        const selected = categoryIds.includes(category.id);
+                        return (
+                          <button key={category.id} type="button" aria-pressed={selected} onClick={() => toggleCategory(category.id)} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium ${selected ? "bg-black text-white" : "bg-white text-black/55"}`}>
+                            {selected ? <Check aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2.5} /> : null}
+                            {category.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <button type="button" onClick={() => setCategoryPickerOpen(false)} disabled={!categoryIds.length} className="mt-5 h-12 w-full rounded-xl bg-black text-sm font-semibold text-white disabled:bg-black/20">Done</button>
+        </DrawerContent>
+      </Drawer>
     </main>
   );
 }
 
 function Field({ label, optional = false, children }: { label: string; optional?: boolean; children: ReactNode }) {
   return (
-    <label className="block">
+    <div className="block">
       <span className="mb-2 flex items-center gap-1.5 text-sm font-medium">
         {label}{optional ? <span className="text-xs font-normal text-black/35">Optional</span> : null}
       </span>
       {children}
+    </div>
+  );
+}
+
+function FilePicker({ icon, title, detail, selected, accept, onChange, required = false, multiple = false }: { icon: ReactNode; title: string; detail: string; selected: boolean; accept: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void; required?: boolean; multiple?: boolean }) {
+  return (
+    <label className="flex min-h-18 cursor-pointer items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-3 transition hover:border-black/20 active:scale-[0.99]">
+      <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-[#0061ff] text-white" : "bg-[#f2f2f2] text-black/55"}`}>
+        {selected ? <Check className="h-5 w-5" strokeWidth={2.5} /> : icon}
+        <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-md border-2 border-white bg-white text-[#0061ff]" aria-hidden="true">
+          <DropboxMark className="h-3.5 w-3.5" />
+        </span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{title}</span>
+        <span className="mt-0.5 block truncate text-xs text-black/40">{detail}</span>
+      </span>
+      <span className="shrink-0 rounded-lg bg-[#f2f2f2] px-3 py-2 text-xs font-semibold text-black/70">
+        {selected ? "Replace" : "Choose"}
+      </span>
+      <input type="file" required={required} multiple={multiple} accept={accept} onChange={onChange} className="sr-only" />
     </label>
   );
 }
 
-function FilePicker({ icon, title, detail, accept, onChange, required = false, multiple = false, compact = false }: { icon: ReactNode; title: string; detail: string; accept: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void; required?: boolean; multiple?: boolean; compact?: boolean }) {
+function DropboxMark({ className }: { className?: string }) {
   return (
-    <label className={`flex cursor-pointer items-center bg-[#f2f2f2] transition active:scale-[0.99] ${compact ? "min-h-24 flex-col justify-center rounded-xl px-3 py-4 text-center" : "min-h-20 gap-4 rounded-2xl px-4 py-3"}`}>
-      <span className={`flex shrink-0 items-center justify-center rounded-xl bg-white ${compact ? "mb-2 h-9 w-9" : "h-12 w-12"}`}>{icon}</span>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-semibold">{title}</span>
-        <span className="mt-0.5 block text-xs text-black/40">{detail}</span>
-      </span>
-      <input type="file" required={required} multiple={multiple} accept={accept} onChange={onChange} className="sr-only" />
-    </label>
+    <svg viewBox="0 0 24 20" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M5.9 0 0 3.75 5.9 7.5l5.9-3.75L5.9 0Zm12.2 0-5.9 3.75 5.9 3.75L24 3.75 18.1 0ZM0 11.25 5.9 15l5.9-3.75L5.9 7.5 0 11.25Zm18.1-3.75-5.9 3.75L18.1 15l5.9-3.75-5.9-3.75ZM6.1 16.25 12 20l5.9-3.75L12 12.5l-5.9 3.75Z" />
+    </svg>
   );
 }

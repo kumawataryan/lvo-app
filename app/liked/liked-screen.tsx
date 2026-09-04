@@ -7,7 +7,7 @@ import { useState } from "react";
 import { LibraryQuickActions, TemplateCard, mapPublishedTemplate, useTemplateInteractions, type Template } from "@/components/craft-app";
 import type { PublishedTemplate } from "@/lib/templates/types";
 
-export function LikedScreen({ templates: publishedTemplates }: { templates: PublishedTemplate[] }) {
+export function LikedScreen({ templates: publishedTemplates, subscribed }: { templates: PublishedTemplate[]; subscribed: boolean }) {
   const router = useRouter();
   const templates = publishedTemplates.map(mapPublishedTemplate);
   const interactions = useTemplateInteractions();
@@ -28,7 +28,7 @@ export function LikedScreen({ templates: publishedTemplates }: { templates: Publ
 
         {templates.length ? <div className="mt-7 grid grid-cols-2 gap-2">{templates.map((template) => <TemplateCard key={template.id} template={template} statusIcon="like" onOpenDetail={() => router.push(`/templates/${template.slug}`)} onQuickActions={() => setQuickTemplate(template)} />)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No liked templates</div>}
       </div>
-      {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} onClose={() => setQuickTemplate(null)} /> : null}
+      {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} subscribed={subscribed} onClose={() => setQuickTemplate(null)} /> : null}
     </main>
   );
 }

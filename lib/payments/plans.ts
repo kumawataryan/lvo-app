@@ -1,10 +1,11 @@
 export type PlanId = "monthly" | "yearly" | "lifetime";
-export type Gateway = "razorpay" | "paypal" | "etsy";
+/** Etsy remains here for historical purchase records, but is no longer offered at checkout. */
+export type Gateway = "razorpay" | "paypal" | "stripe" | "etsy";
 
 type PlanDetails = {
   id: PlanId;
   name: string;
-  /** Price in whole dollars (e.g. 1.50, 15, 100). Used by PayPal and, as a reference, Etsy. */
+  /** Price in whole dollars (e.g. 1.50, 15, 100). Used by PayPal and Stripe. */
   usdAmount: number;
   /** Formatted dollar price for display, e.g. "$1.50". */
   price: string;
@@ -13,7 +14,7 @@ type PlanDetails = {
   billingType: "subscription" | "one_time";
 };
 
-/** Base USD pricing, used by PayPal and as the reference price for Etsy. */
+/** Base USD pricing, used by PayPal and Stripe. */
 export const PLAN_DETAILS: Record<PlanId, PlanDetails> = {
   monthly: {
     id: "monthly",
@@ -67,10 +68,6 @@ export function isPlanId(value: unknown): value is PlanId {
   return value === "monthly" || value === "yearly" || value === "lifetime";
 }
 
-function formatUsd(amount: number) {
-  return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
-}
-
 /** PayPal amount in cents (smallest USD unit) — the API wants the integer minor unit. */
 export function amountInCents(planId: PlanId) {
   return Math.round(PLAN_DETAILS[planId].usdAmount * 100);
@@ -79,15 +76,6 @@ export function amountInCents(planId: PlanId) {
 /** PayPal wants amounts as a decimal string, e.g. "1.50". */
 export function paypalAmountString(planId: PlanId) {
   return PLAN_DETAILS[planId].usdAmount.toFixed(2);
-}
-
-/**
- * Etsy takes a cut of every sale, so listings there are priced $1 higher than our other
- * gateways to cover it — Etsy is offered as a fallback for users who can't complete Razorpay/PayPal.
- */
-export function etsyPrice(planId: PlanId) {
-  const amount = PLAN_DETAILS[planId].usdAmount + 1;
-  return { usdAmount: amount, price: formatUsd(amount) };
 }
 
 export type GatewayInfo = {
@@ -100,11 +88,11 @@ export type GatewayInfo = {
 export const GATEWAYS: GatewayInfo[] = [
   { id: "razorpay", label: "Razorpay", iconDomain: "razorpay.com" },
   { id: "paypal", label: "PayPal", iconDomain: "paypal.com" },
-  { id: "etsy", label: "Etsy", iconDomain: "etsy.com" },
+  { id: "stripe", label: "Stripe", iconDomain: "stripe.com" },
 ];
 
 export function isGateway(value: unknown): value is Gateway {
-  return value === "razorpay" || value === "paypal" || value === "etsy";
+  return value === "razorpay" || value === "paypal" || value === "stripe" || value === "etsy";
 }
 
 export function faviconUrl(domain: string, size = 64) {

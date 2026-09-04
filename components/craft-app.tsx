@@ -3,13 +3,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, Bookmark, ChevronDown, ChevronRight, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, Heart, Image as ImageIcon, Images, LayoutTemplate, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Pause, Pencil, Play, Plus, Quote, Ruler, Scissors, Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
-import { gsap } from "gsap";
+import { ArrowLeft, ArrowUp, BookOpen, Bookmark, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, Images, LayoutGrid, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Palette, Pause, Pencil, Play, Plus, Puzzle, Quote, Ruler, Scissors, Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from "@/components/ui/carousel";
 import { EmailIcon, EmailShareButton, FacebookIcon, FacebookShareButton, LinkedinIcon, LinkedinShareButton, PinterestIcon, PinterestShareButton, ThreadsIcon, ThreadsShareButton, TwitterIcon, TwitterShareButton, WhatsappIcon, WhatsappShareButton } from "react-share";
 import { fetchPublishedTemplates } from "@/lib/templates/client";
-import type { PublishedTemplate } from "@/lib/templates/types";
+import { DEFAULT_TEMPLATE_CATEGORIES, type PublishedTemplate, type TemplateCategory } from "@/lib/templates/types";
 import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { useYoutubePlayer } from "@/lib/youtube/use-youtube-player";
 import { PLAN_DETAILS } from "@/lib/payments/plans";
@@ -96,7 +95,7 @@ export type SubscriptionSummary = {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
 };
-export type ProfileKidSummary = { id: string; name: string; avatar: string };
+export type ProfileKidSummary = { id: string; name: string; birthYear: number; avatar: string };
 
 function triggerHaptic(pattern: number | number[] = 10) {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
@@ -113,6 +112,10 @@ async function downloadTemplate(template: Template) {
   try {
     const linkResponse = await fetch(`/api/templates/${template.slug}/download`);
     const linkData = await linkResponse.json();
+    if (linkResponse.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
     if (!linkResponse.ok || !linkData.url) {
       window.alert(linkData.error || "The printable file could not be downloaded. Please try again.");
       return;
@@ -150,6 +153,9 @@ export type Template = {
   galleryAltText: string[];
   supplyItems: Array<{ name: string; icon: string | null }>;
   hasPrintable: boolean;
+  isFree: boolean;
+  minimumAge: number | null;
+  maximumAge: number | null;
   palette?: [string, string, string];
   motif?: "flowers" | "lantern" | "origami" | "card" | "wreath" | "clay" | "vase" | "hanger";
 };
@@ -171,6 +177,9 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     galleryAltText: template.galleryImages.map((image) => image.altText),
     supplyItems: template.supplies.map((supply) => ({ name: supply.name, icon: supply.icon })),
     hasPrintable: template.hasPrintable,
+    isFree: template.isFree,
+    minimumAge: template.minimumAge,
+    maximumAge: template.maximumAge,
   };
 }
 
@@ -311,18 +320,18 @@ export function useTemplateInteractions(): TemplateInteractions {
 
 const VALID_TABS: Tab[] = ["templates", "browse", "search", "stories", "products", "profile"];
 
-function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed = false, initialTab, parentName = "", subscription = null, profileKids = [] }: { initialTemplates?: PublishedTemplate[]; canAddTemplates?: boolean; subscribed?: boolean; initialTab?: string; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
+function CraftApp({ initialTemplates = [], initialCategories = DEFAULT_TEMPLATE_CATEGORIES, canAddTemplates = false, subscribed = false, initialTab, parentName = "", subscription = null, profileKids = [] }: { initialTemplates?: PublishedTemplate[]; initialCategories?: TemplateCategory[]; canAddTemplates?: boolean; subscribed?: boolean; initialTab?: string; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
   const router = useRouter();
   const [templates, setTemplates] = useState<Template[]>(() => initialTemplates.map(mapPublishedTemplate));
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>(VALID_TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "templates");
   const [browseCategory, setBrowseCategory] = useState<string | null>(null);
-  const [templateCategory, setTemplateCategory] = useState("All");
   const [detailTemplate, setDetailTemplate] = useState<Template | null>(null);
   const player = useStoryPlayer();
   const storyDetailRef = useRef<StoryDetailHandle | null>(null);
   const interactions = useTemplateInteractions();
-  const categories = useMemo(() => Array.from(new Set(templates.map((item) => item.category))), [templates]);
+  const categories = (initialCategories.length ? initialCategories : DEFAULT_TEMPLATE_CATEGORIES)
+    .filter((category) => category.slug !== "craft-classes" && category.slug !== "stories");
 
   useEffect(() => {
     if (initialTemplates.length) return;
@@ -338,13 +347,6 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed =
   const filteredTemplates = useMemo(() => {
     return browseCategory ? templates.filter((template) => template.category === browseCategory) : templates;
   }, [browseCategory, templates]);
-
-  const categoryList = tab === "browse" && browseCategory
-    ? filteredTemplates
-    : templateCategory === "All"
-      ? templates
-      : templates.filter((template) => template.category === templateCategory);
-
 
   const openTemplate = (template: Template) => {
     setDetailTemplate(template);
@@ -370,8 +372,8 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed =
   };
 
   return (
-    <main className={`h-dvh w-full overflow-hidden ${tab === "stories" ? "bg-black text-white" : "bg-[var(--background)] text-[var(--foreground)]"}`}>
-      <div className={`relative isolate mx-auto flex h-[100dvh] w-[100dvw] max-w-[430px] flex-col overflow-hidden ${tab === "stories" ? "bg-black" : "bg-[var(--background)]"}`}>
+    <main className="h-dvh w-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+      <div className="relative isolate mx-auto flex h-[100dvh] w-[100dvw] max-w-[430px] flex-col overflow-hidden bg-[var(--background)]">
         {tab === "browse" && browseCategory ? (
           <div className="absolute inset-x-0 top-0 z-20 border-b border-black/5 bg-[color:color-mix(in_srgb,var(--background)_88%,white)]/95 px-5 py-4 backdrop-blur">
             <button
@@ -384,37 +386,54 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed =
         ) : null}
 
         {tab === "browse" && !browseCategory ? (
-          <section className="min-h-0 flex-1 overflow-y-auto px-5 pb-6 pt-6">
-            <div className="mb-8 max-w-xl">
-              <p className="text-xs text-black/40">Browse</p>
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight">Choose a category</h1>
-              <p className="mt-3 max-w-lg text-sm leading-6 text-black/52">A calm way to move into the same reel, filtered by what you want to make.</p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {categories.map((category, index) => (
+          <section className="flex min-h-0 flex-1 flex-col bg-white">
+            <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} />
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-28 pt-4">
+              <p className="mb-2.5 text-xs font-medium text-black/40">Categories</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => {
+                      router.push(`/categories/${category.slug}`);
+                    }}
+                    className="flex min-h-14 items-center gap-2 rounded-2xl bg-[#f2f2f2] px-4 text-left text-[15px] font-semibold text-black transition hover:bg-[#e9e9e9] active:scale-[0.98]"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                    <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-black/30" strokeWidth={2} />
+                  </button>
+                ))}
+              </div>
+              <p className="mb-2.5 mt-8 text-xs font-medium text-black/40">Special</p>
+              <div className="grid grid-cols-1 gap-3">
                 <button
-                  key={category}
-                  onClick={() => {
-                    setBrowseCategory(category);
-                    setTab("browse");
-                  }}
-                  className="group overflow-hidden rounded-[28px] border border-black/6 bg-white p-4 text-left shadow-[0_1px_0_rgba(0,0,0,0.03)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(0,0,0,0.05)]"
-                >
-                  <CategoryArt index={index} />
-                  <div className="mt-4 flex items-center gap-2.5">
-                    <CategoryIcon index={index} />
-                    <div>
-                      <p className="text-base font-medium">{category}</p>
-                      <p className="mt-1 text-sm text-black/45">Explore templates</p>
-                    </div>
-                  </div>
+                  type="button"
+                  onClick={() => router.push("/craft-classes")}
+                className="flex h-14 items-center justify-between rounded-2xl bg-black px-4 text-white transition active:scale-[0.98]"
+              >
+                  <span className="flex items-center gap-2">
+                    <CirclePlay aria-hidden="true" className="h-5 w-5 text-white" strokeWidth={2.5} />
+                    <span className="text-[15px] font-semibold">Craft Classes</span>
+                  </span>
+                  <ChevronRight aria-hidden="true" className="h-4 w-4 text-white/45" strokeWidth={2} />
                 </button>
-              ))}
+                  <button
+                    type="button"
+                    onClick={() => router.push("/stories")}
+                    className="flex h-14 items-center justify-between rounded-2xl bg-black px-4 text-white transition active:scale-[0.98]"
+                  >
+                    <span className="flex items-center gap-2">
+                      <BookOpen aria-hidden="true" className="h-5 w-5 text-white" strokeWidth={2.25} />
+                      <span className="text-[15px] font-semibold">Stories</span>
+                    </span>
+                    <ChevronRight aria-hidden="true" className="h-4 w-4 text-white/45" strokeWidth={2} />
+                </button>
+              </div>
             </div>
           </section>
         ) : tab === "stories" ? (
-          <section className="m-0 flex min-h-0 flex-1 flex-col bg-black p-0">
-            <TemplateTopBar dark canAddTemplates={canAddTemplates} subscribed={subscribed} categoriesOverride={["All", "Calm", "Animals", "Adventure", "Sleep"]} activeCategory="All" onCategoryChange={() => undefined} />
+          <section className="m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
+            <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} categoriesOverride={[]} activeCategory="" onCategoryChange={() => undefined} />
             <StoriesScreen onOpenStory={openStory} />
           </section>
         ) : tab === "products" ? (
@@ -425,11 +444,11 @@ function CraftApp({ initialTemplates = [], canAddTemplates = false, subscribed =
         ) : tab === "profile" ? (
           <ProfileScreen templates={templates} interactions={interactions} subscribed={subscribed} parentName={parentName} subscription={subscription} profileKids={profileKids} />
         ) : tab === "search" ? (
-          <SearchScreen templates={templates} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />
+          <SearchScreen templates={templates} categories={categories.slice(0, 5)} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} profileKids={profileKids} />
         ) : (
           <section className="m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
-            <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory={templateCategory} onCategoryChange={setTemplateCategory} categoriesOverride={["All", ...categories]} />
-            {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : <TemplateFeed templates={categoryList} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />}
+            <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} />
+            {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : <TemplateFeed templates={templates} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />}
           </section>
         )}
 
@@ -483,9 +502,9 @@ export function StoriesScreen({ onOpenStory }: { onOpenStory: (story: Story) => 
   const player = useStoryPlayer();
 
   return (
-    <section className="relative min-h-0 flex-1 overflow-hidden bg-black text-white">
+    <section className="relative min-h-0 flex-1 overflow-hidden bg-white text-black">
       <div className="h-full overflow-y-auto pb-44 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="grid grid-cols-2 gap-2 p-2">
+        <div className="grid grid-cols-2 gap-2 px-2 pb-2 pt-5">
           {demoStories.map((story) => {
             const isNowPlaying = player.story?.id === story.id;
             const fraction = isNowPlaying && story.duration > 0 ? Math.min(Math.max(player.progress / story.duration, 0), 1) : 0;
@@ -501,7 +520,7 @@ export function StoriesScreen({ onOpenStory }: { onOpenStory: (story: Story) => 
                   triggerHaptic(10);
                   onOpenStory(story);
                 }}
-                className="group relative aspect-[3/4] min-w-0 cursor-pointer overflow-hidden rounded-[18px] bg-[#202020] text-left transition active:scale-[0.98]"
+                className="group relative aspect-[3/4] min-w-0 cursor-pointer overflow-hidden rounded-[18px] bg-[#202020] text-left text-white transition active:scale-[0.98]"
               >
                 <StoryArtwork story={story} className="absolute inset-0" large />
                 <span className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/90 via-black/35 to-transparent" />
@@ -546,7 +565,6 @@ export type StoryDetailHandle = { minimize: (onDone?: () => void) => void };
 export const StoryDetail = forwardRef<StoryDetailHandle, { story: Story; progress: number; playing: boolean; onProgressChange: (progress: number) => void; onPlayingChange: (playing: boolean) => void; onMinimize: () => void }>(function StoryDetail({ story, progress, playing, onProgressChange, onPlayingChange, onMinimize }, ref) {
   const [view, setView] = useState<"lyrics" | "carousel">("carousel");
   const [timedLyrics, setTimedLyrics] = useState<TimedLyricLine[] | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setView("carousel");
@@ -565,56 +583,9 @@ export const StoryDetail = forwardRef<StoryDetailHandle, { story: Story; progres
     return () => controller.abort();
   }, [story]);
 
-  useEffect(() => {
-    const element = rootRef.current;
-    if (!element) return;
-    gsap.fromTo(element, { y: "100%" }, { y: "0%", duration: 0.45, ease: "power2.out" });
-  }, []);
+  const handleMinimize = () => onMinimize();
 
-  const playMinimizeAnimation = (onDone: () => void) => {
-    const element = rootRef.current;
-    if (!element) {
-      onDone();
-      return;
-    }
-
-    const anchor = document.getElementById("story-nav-anchor");
-    const timeline = gsap.timeline({ onComplete: onDone });
-    timeline.set(element, { transformOrigin: "center center", pointerEvents: "none" });
-
-    if (anchor) {
-      const elementRect = element.getBoundingClientRect();
-      const anchorRect = anchor.getBoundingClientRect();
-      const dx = (anchorRect.left + anchorRect.width / 2) - (elementRect.left + elementRect.width / 2);
-      const dy = (anchorRect.top + anchorRect.height / 2) - (elementRect.top + elementRect.height / 2);
-      const scale = Math.max(anchorRect.width / elementRect.width, 0.05);
-
-      // A single accelerating fall under "gravity" (quadratic ease-in ~ constant acceleration),
-      // shrinking continuously as it approaches and rotating slightly like a dropped object.
-      // The nav bar sits at a higher z-index than this screen, so once it reaches the anchor's
-      // size and position it's genuinely occluded by (tucked inside) the nav pill above it.
-      timeline.to(element, {
-        x: dx,
-        y: dy,
-        scale,
-        rotation: 8,
-        borderRadius: 20,
-        duration: 0.55,
-        ease: "power2.in",
-      }, 0);
-
-      // Keep shrinking past the anchor's own size while it fades, so it never plateaus and just
-      // sits there before vanishing — the scale-down continues all the way through.
-      timeline.to(element, { scale: scale * 0.4, opacity: 0, duration: 0.22, ease: "power1.in" }, 0.5);
-      return;
-    }
-
-    timeline.to(element, { y: "100%", scale: 0.94, opacity: 0.7, duration: 0.45, ease: "power3.inOut" }, 0);
-  };
-
-  const handleMinimize = () => playMinimizeAnimation(onMinimize);
-
-  useImperativeHandle(ref, () => ({ minimize: (onDone) => playMinimizeAnimation(onDone ?? onMinimize) }));
+  useImperativeHandle(ref, () => ({ minimize: (onDone) => (onDone ?? onMinimize)() }));
 
   useEffect(() => {
     const html = document.documentElement;
@@ -652,7 +623,8 @@ export const StoryDetail = forwardRef<StoryDetailHandle, { story: Story; progres
   const actionButtonClass = "flex h-11 w-11 items-center justify-center rounded-xl bg-black/40 backdrop-blur-md transition active:scale-90";
 
   return (
-    <div ref={rootRef} className="fixed inset-0 z-[2000] h-dvh w-full overflow-hidden bg-black text-white">
+    <div className="fixed inset-0 z-[2000] h-dvh w-full overflow-hidden bg-black text-white">
+      <div className="relative mx-auto h-dvh w-full max-w-[430px] overflow-hidden bg-black">
       <StoryArtwork story={story} className={`absolute inset-0 transition-[filter] duration-500 ${view === "lyrics" ? "scale-110 blur-2xl" : ""}`} large scene={activeScene} />
       <div className="absolute inset-0 bg-black/45" aria-hidden="true" />
       <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/90 via-black/50 to-transparent" aria-hidden="true" />
@@ -698,6 +670,7 @@ export const StoryDetail = forwardRef<StoryDetailHandle, { story: Story; progres
             ))}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -748,9 +721,10 @@ function SceneMedia({ story, index, className }: { story: Story; index: number; 
   return <StoryArtwork story={story} className={className} large scene={index} />;
 }
 
-export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false, canAddTemplates = false, subscribed = false, categoriesOverride }: { activeCategory: string; onCategoryChange: (category: string) => void; dark?: boolean; canAddTemplates?: boolean; subscribed?: boolean; categoriesOverride?: string[] }) {
+export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false, canAddTemplates = false, subscribed = false, categoriesOverride, categoryOptions }: { activeCategory: string; onCategoryChange: (category: string) => void; dark?: boolean; canAddTemplates?: boolean; subscribed?: boolean; categoriesOverride?: string[]; categoryOptions?: TemplateCategory[] }) {
   const router = useRouter();
-  const filterCategories = categoriesOverride ?? ["All"];
+  const filterCategories = categoriesOverride ?? (categoryOptions ?? []).map((category) => category.name);
+  const categoryIcons = new Map((categoryOptions ?? []).map((category) => [category.name, category.icon]));
 
   return (
     <header className={`shrink-0 px-4 pb-3 pt-5 ${dark ? "bg-black text-white" : "bg-white text-black"}`}>
@@ -780,49 +754,159 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
           ) : null}
         </div>
       </div>
-      <div className="mt-5 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {filterCategories.map((category) => (
-          <button
-            key={category}
-            type="button"
-            onClick={() => onCategoryChange(category)}
-            className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-[9px] text-[15px] font-medium backdrop-blur-xl transition active:scale-95 ${activeCategory === category ? (dark ? "bg-white/90 text-black" : "bg-black/85 text-white") : (dark ? "bg-white/20 text-white hover:bg-white/25" : "bg-black/[0.07] text-black/60 hover:bg-black/11")}`}
-          >
-            {category}
-          </button>
-        ))}
-      </div>
+      {categoryOptions?.length ? (
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          {categoryOptions.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              aria-pressed={activeCategory === category.name}
+              onClick={() => onCategoryChange(category.name)}
+              className={`flex min-w-0 items-center gap-2 rounded-2xl p-2.5 text-left transition active:scale-[0.98] ${activeCategory === category.name ? "bg-black text-white" : "bg-[#f2f2f2] text-black"}`}
+            >
+              <span className="flex h-9 w-7 shrink-0 items-center justify-center">
+                <CategoryIcon icon={category.icon} />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold">{category.name}</span>
+              <ChevronRight className={`h-4 w-4 shrink-0 ${activeCategory === category.name ? "text-white/55" : "text-black/30"}`} strokeWidth={2} />
+            </button>
+          ))}
+        </div>
+      ) : filterCategories.length ? (
+        <div className="mt-5 flex flex-wrap gap-2">
+          {filterCategories.map((category) => (
+            <button
+              key={category}
+              type="button"
+              onClick={() => onCategoryChange(category)}
+              className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-[9px] text-[15px] font-medium backdrop-blur-xl transition active:scale-95 ${activeCategory === category ? (dark ? "bg-white/90 text-black" : "bg-black/85 text-white") : (dark ? "bg-white/20 text-white hover:bg-white/25" : "bg-black/[0.07] text-black/60 hover:bg-black/11")}`}
+            >
+              {category !== "All" ? <CategoryIcon icon={categoryIcons.get(category)} /> : null}
+              {category}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </header>
   );
 }
 
-function SearchScreen({ templates, onOpenDetail, subscribed, interactions }: { templates: Template[]; onOpenDetail: (template: Template) => void; subscribed: boolean; interactions: TemplateInteractions }) {
+export function CategoryDetailScreen({ category, subcategories, initialTemplates, subcategoryTemplates, subscribed = false }: { category: TemplateCategory; subcategories: TemplateCategory[]; initialTemplates: PublishedTemplate[]; subcategoryTemplates: Record<string, PublishedTemplate[]>; subscribed?: boolean }) {
+  const router = useRouter();
+  const templates = useMemo(() => initialTemplates.map(mapPublishedTemplate), [initialTemplates]);
+  const templatesBySubcategory = useMemo(() => Object.fromEntries(
+    Object.entries(subcategoryTemplates).map(([slug, items]) => [slug, items.map(mapPublishedTemplate)]),
+  ), [subcategoryTemplates]);
+  const [activeSubcategory, setActiveSubcategory] = useState<string>();
+  const visibleTemplates = activeSubcategory ? templatesBySubcategory[activeSubcategory] ?? [] : templates;
+  const interactions = useTemplateInteractions();
+
+  return (
+    <main className="h-dvh overflow-hidden bg-white text-black">
+      <div className="mx-auto flex h-full w-full max-w-[430px] flex-col bg-white">
+        <div className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[calc(16px+env(safe-area-inset-top))]">
+          <button type="button" aria-label="Back to categories" onClick={() => router.push("/?tab=browse")} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{category.name}</h1>
+        </div>
+        {visibleTemplates.length ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            {subcategories.length ? (
+              <div className="flex shrink-0 gap-2 overflow-x-auto px-4 pb-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  aria-pressed={!activeSubcategory}
+                  onClick={() => setActiveSubcategory(undefined)}
+                  className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-[15px] font-medium transition active:scale-95 ${!activeSubcategory ? "bg-black text-white" : "bg-black/[0.07] text-black/60"}`}
+                >
+                  All
+                </button>
+                {subcategories.map((subcategory) => (
+                  <button
+                    key={subcategory.id}
+                    type="button"
+                    aria-pressed={activeSubcategory === subcategory.slug}
+                    onClick={() => setActiveSubcategory((current) => current === subcategory.slug ? undefined : subcategory.slug)}
+                    className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-[15px] font-medium transition active:scale-95 ${activeSubcategory === subcategory.slug ? "bg-black text-white" : "bg-black/[0.07] text-black/60"}`}
+                  >
+                    {subcategory.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <TemplateFeed templates={visibleTemplates} onOpenDetail={(template) => router.push(`/templates/${template.slug}`)} subscribed={subscribed} interactions={interactions} horizontalPadding="px-4" />
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col">
+            {subcategories.length ? (
+              <div className="flex shrink-0 gap-2 overflow-x-auto px-4 pb-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  aria-pressed={!activeSubcategory}
+                  onClick={() => setActiveSubcategory(undefined)}
+                  className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-[15px] font-medium transition active:scale-95 ${!activeSubcategory ? "bg-black text-white" : "bg-black/[0.07] text-black/60"}`}
+                >
+                  All
+                </button>
+                {subcategories.map((subcategory) => (
+                  <button
+                    key={subcategory.id}
+                    type="button"
+                    aria-pressed={activeSubcategory === subcategory.slug}
+                    onClick={() => setActiveSubcategory((current) => current === subcategory.slug ? undefined : subcategory.slug)}
+                    className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-[15px] font-medium transition active:scale-95 ${activeSubcategory === subcategory.slug ? "bg-black text-white" : "bg-black/[0.07] text-black/60"}`}
+                  >
+                    {subcategory.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex flex-1 flex-col items-center justify-center px-4 pb-24 text-center">
+              <p className="text-sm font-semibold">No templates yet</p>
+              <p className="mt-1 text-sm text-black/40">Check back soon.</p>
+              <button type="button" onClick={() => router.push("/?tab=browse")} className="mt-5 rounded-xl bg-black px-5 py-2.5 text-sm font-medium text-white transition active:scale-95">
+                Browse categories
+              </button>
+            </div>
+          </div>
+        )}
+        <BottomNav active="browse" onChange={(tab) => router.push(tab === "templates" ? "/" : `/?tab=${tab}`)} />
+      </div>
+    </main>
+  );
+}
+
+function SearchScreen({ templates, categories, onOpenDetail, subscribed, interactions, profileKids }: { templates: Template[]; categories: TemplateCategory[]; onOpenDetail: (template: Template) => void; subscribed: boolean; interactions: TemplateInteractions; profileKids: ProfileKidSummary[] }) {
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
-  const [difficultyFilter, setDifficultyFilter] = useState<"All" | Template["difficulty"]>("All");
+  const [kidFilter, setKidFilter] = useState("");
+  const [freeOnly, setFreeOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  const categories = useMemo(() => Array.from(new Set(templates.map((template) => template.category))), [templates]);
-  const filtersActive = categoryFilter !== "All" || difficultyFilter !== "All";
+  const filtersActive = categoryFilter !== "All" || Boolean(kidFilter) || freeOnly;
   const isFiltering = query.trim().length > 0 || filtersActive;
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const selectedKid = profileKids.find((kid) => kid.id === kidFilter);
+    const childAge = selectedKid ? new Date().getFullYear() - selectedKid.birthYear : null;
     return templates.filter((template) => {
       if (categoryFilter !== "All" && template.category !== categoryFilter) return false;
-      if (difficultyFilter !== "All" && template.difficulty !== difficultyFilter) return false;
+      if (freeOnly && !template.isFree) return false;
+      if (childAge !== null && ((template.minimumAge !== null && childAge < template.minimumAge) || (template.maximumAge !== null && childAge > template.maximumAge))) return false;
       if (q && !`${template.name} ${template.category}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [query, categoryFilter, difficultyFilter, templates]);
+  }, [query, categoryFilter, kidFilter, freeOnly, profileKids, templates]);
 
   const recentTemplates = useMemo(() => templates.slice(0, 20), [templates]);
 
   return (
     <section className="relative m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
-      <header className="absolute inset-x-0 top-0 z-20 px-2 pb-5 pt-3">
-        <label className="flex h-16 touch-manipulation items-center gap-2.5 rounded-2xl bg-black/35 px-4 text-white shadow-[0_4px_14px_rgba(0,0,0,0.16)] backdrop-blur-xl">
-          <Search className="h-5 w-5 shrink-0 text-white/70" />
+      <header className="absolute inset-x-0 top-0 z-20 px-4 pb-5 pt-3">
+        <label className="flex h-16 touch-manipulation items-center gap-2.5 rounded-2xl bg-[#f2f2f2] px-4 text-black">
+          <Search className="h-5 w-5 shrink-0 text-black/45" />
           <input
             autoFocus
             suppressHydrationWarning
@@ -830,10 +914,10 @@ function SearchScreen({ templates, onOpenDetail, subscribed, interactions }: { t
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search templates"
             aria-label="Search templates"
-            className="min-w-0 flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/50"
+            className="min-w-0 flex-1 bg-transparent text-base text-black outline-none placeholder:text-black/40"
           />
           {query ? (
-            <button type="button" aria-label="Clear search" onClick={() => setQuery("")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/70 transition active:scale-90">
+            <button type="button" aria-label="Clear search" onClick={() => setQuery("")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-black/45 transition active:scale-90">
               <X className="h-5 w-5" />
             </button>
           ) : null}
@@ -849,14 +933,17 @@ function SearchScreen({ templates, onOpenDetail, subscribed, interactions }: { t
           </button>
         </label>
       </header>
-      <TemplateFeed templates={isFiltering ? results : recentTemplates} onOpenDetail={onOpenDetail} subscribed={subscribed} interactions={interactions} topPadding="pt-24" />
+      <TemplateFeed templates={isFiltering ? results : recentTemplates} onOpenDetail={onOpenDetail} subscribed={subscribed} interactions={interactions} topPadding="pt-24" horizontalPadding="px-4" />
       {showFilters ? (
         <SearchFiltersSheet
-          categories={categories}
+          categories={categories.map((category) => category.name)}
           categoryFilter={categoryFilter}
           onCategoryChange={setCategoryFilter}
-          difficultyFilter={difficultyFilter}
-          onDifficultyChange={setDifficultyFilter}
+          profileKids={profileKids}
+          kidFilter={kidFilter}
+          onKidChange={setKidFilter}
+          freeOnly={freeOnly}
+          onFreeOnlyChange={setFreeOnly}
           onClose={() => setShowFilters(false)}
         />
       ) : null}
@@ -868,15 +955,21 @@ function SearchFiltersSheet({
   categories,
   categoryFilter,
   onCategoryChange,
-  difficultyFilter,
-  onDifficultyChange,
+  profileKids,
+  kidFilter,
+  onKidChange,
+  freeOnly,
+  onFreeOnlyChange,
   onClose,
 }: {
   categories: string[];
   categoryFilter: string;
   onCategoryChange: (category: string) => void;
-  difficultyFilter: "All" | Template["difficulty"];
-  onDifficultyChange: (level: "All" | Template["difficulty"]) => void;
+  profileKids: ProfileKidSummary[];
+  kidFilter: string;
+  onKidChange: (kidId: string) => void;
+  freeOnly: boolean;
+  onFreeOnlyChange: (value: boolean) => void;
   onClose: () => void;
 }) {
   return (
@@ -884,15 +977,28 @@ function SearchFiltersSheet({
       <DrawerContent>
         <div aria-hidden="true" className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15" />
         <DrawerTitle className="text-lg font-semibold tracking-tight">Filters</DrawerTitle>
-        <DrawerDescription className="sr-only">Filter templates by category and difficulty.</DrawerDescription>
+        <DrawerDescription className="sr-only">Filter templates by child, category, and free access.</DrawerDescription>
+        {profileKids.length ? (
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-black/40">For child</p>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {profileKids.map((kid) => (
+                <button key={kid.id} type="button" aria-pressed={kidFilter === kid.id} onClick={() => onKidChange(kidFilter === kid.id ? "" : kid.id)} className={`flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 text-sm font-medium transition ${kidFilter === kid.id ? "bg-black text-white" : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08]"}`}>
+                  <Image src={CHILD_AVATAR_SRC[kid.avatar] ?? "/avatars/avatar_01.png"} alt="" width={28} height={28} className="h-7 w-7 rounded-full bg-white object-cover" />
+                  <span>{kid.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="mt-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-black/40">Category</p>
           <div className="mt-2.5 flex flex-wrap gap-2">
-            {["All", ...categories].map((category) => (
+            {categories.map((category) => (
               <button
                 key={category}
                 type="button"
-                onClick={() => onCategoryChange(category)}
+                onClick={() => onCategoryChange(categoryFilter === category ? "All" : category)}
                 className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${categoryFilter === category ? "bg-black text-white" : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08]"}`}
               >
                 {category}
@@ -901,26 +1007,10 @@ function SearchFiltersSheet({
           </div>
         </div>
         <div className="mt-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-black/40">Difficulty</p>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => onDifficultyChange("All")}
-              className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${difficultyFilter === "All" ? "bg-black text-white" : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08]"}`}
-            >
-              All
-            </button>
-            {(["Easy", "Medium", "Advanced"] as const).map((level) => (
-              <button
-                key={level}
-                type="button"
-                onClick={() => onDifficultyChange(level)}
-                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${difficultyFilter === level ? "bg-black text-white" : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08]"}`}
-              >
-                {level}
-              </button>
-            ))}
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-black/40">Access</p>
+          <button type="button" aria-pressed={freeOnly} onClick={() => onFreeOnlyChange(!freeOnly)} className={`mt-2.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${freeOnly ? "bg-black text-white" : "bg-black/[0.05] text-black/60 hover:bg-black/[0.08]"}`}>
+            Free
+          </button>
         </div>
         <button type="button" onClick={onClose} className="mt-6 h-12 w-full rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.98]">Show results</button>
       </DrawerContent>
@@ -935,8 +1025,9 @@ function TemplateFeed(props: {
   subscribed: boolean;
   interactions: TemplateInteractions;
   topPadding?: string;
+  horizontalPadding?: string;
 }) {
-  const { templates, dark = false, topPadding = "pt-2" } = props;
+  const { templates, dark = false, topPadding = "pt-2", horizontalPadding = "px-2" } = props;
   const [quickTemplate, setQuickTemplate] = useState<Template | null>(null);
   const [quickOrigin, setQuickOrigin] = useState({ x: 0, y: 0 });
   const [quickActionTarget, setQuickActionTarget] = useState<QuickAction | null>(null);
@@ -1022,7 +1113,7 @@ function TemplateFeed(props: {
       void props.interactions.toggleLike(selectedTemplate.id);
     }
     if (action === "download") {
-      if (props.subscribed) {
+      if (props.subscribed || selectedTemplate.isFree) {
         setDownloadingId(selectedTemplate.id);
         void downloadTemplate(selectedTemplate).finally(() => {
           setDownloadingId((current) => (current === selectedTemplate.id ? null : current));
@@ -1074,7 +1165,7 @@ function TemplateFeed(props: {
   });
 
   return (
-    <div className={`relative m-0 h-full overscroll-y-contain px-2 pb-24 ${topPadding} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${quickTemplate ? "overflow-hidden" : "overflow-y-auto"} ${dark ? "bg-black" : "bg-white"}`}>
+    <div className={`relative m-0 h-full overscroll-y-contain ${horizontalPadding} pb-24 ${topPadding} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${quickTemplate ? "overflow-hidden" : "overflow-y-auto"} ${dark ? "bg-black" : "bg-white"}`}>
       <div className="grid grid-cols-2 gap-2">
         {templates.map((template, index) => (
           <TemplateCard
@@ -1157,6 +1248,9 @@ export function TemplateCard({
       onClick={onOpenDetail}
     >
       <ReelMedia template={template} eager={eager} />
+      {template.isFree ? (
+        <span className="pointer-events-none absolute left-2.5 top-2.5 z-10 rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-black shadow-[0_3px_12px_rgba(0,0,0,0.15)]">Free</span>
+      ) : null}
       {statusIcon ? (
         <span aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md">
           {statusIcon === "like" ? <Heart className="h-4 w-4" fill="currentColor" /> : <Bookmark className="h-4 w-4" fill="currentColor" />}
@@ -1175,7 +1269,6 @@ export function TemplateCard({
           <span className="text-[11px] font-semibold text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">Downloading…</span>
         </span>
       ) : null}
-      <p className="pointer-events-none absolute bottom-4 left-3 z-10 max-w-[calc(100%-3.5rem)] truncate text-xs font-medium leading-4 text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">{template.name}</p>
       <button
         type="button"
         aria-label={`Quick actions for ${template.name}`}
@@ -1285,7 +1378,8 @@ function CollectionSheet({ template, interactions, onClose, onChange }: { templa
   );
 }
 
-export function LibraryQuickActions({ template, interactions, onClose }: { template: Template; interactions: TemplateInteractions; onClose: () => void }) {
+export function LibraryQuickActions({ template, interactions, subscribed = false, onClose }: { template: Template; interactions: TemplateInteractions; subscribed?: boolean; onClose: () => void }) {
+  const router = useRouter();
   const [panel, setPanel] = useState<"actions" | "save" | "share">("actions");
   const [downloading, setDownloading] = useState(false);
 
@@ -1301,7 +1395,15 @@ export function LibraryQuickActions({ template, interactions, onClose }: { templ
         <div className="mt-4 grid grid-cols-4 gap-2">
           <button type="button" onClick={() => { void interactions.toggleLike(template.id); onClose(); }} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Heart className="h-5 w-5" fill={interactions.liked.has(template.id) ? "currentColor" : "none"} />{interactions.liked.has(template.id) ? "Unlike" : "Like"}</button>
           <button type="button" onClick={() => setPanel("save")} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Bookmark className="h-5 w-5" fill={interactions.saved.has(template.id) ? "currentColor" : "none"} />Save</button>
-          <button type="button" disabled={downloading} onClick={() => { setDownloading(true); void downloadTemplate(template).finally(() => { setDownloading(false); onClose(); }); }} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium disabled:opacity-50">{downloading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}Download</button>
+          <button type="button" disabled={downloading} onClick={() => {
+            if (!subscribed && !template.isFree) {
+              onClose();
+              router.push(`/subscription?template=${template.slug}`);
+              return;
+            }
+            setDownloading(true);
+            void downloadTemplate(template).finally(() => { setDownloading(false); onClose(); });
+          }} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium disabled:opacity-50">{downloading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}Download</button>
           <button type="button" onClick={() => setPanel("share")} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Share2 className="h-5 w-5" />Share</button>
         </div>
       </DrawerContent>
@@ -1392,7 +1494,7 @@ export function TemplateDetail({ template, templates, onBack, subscribed = false
 
   const liked = interactions.liked.has(activeTemplate.id);
   const saved = interactions.saved.has(activeTemplate.id);
-  const canDownload = subscribed;
+  const canDownload = subscribed || activeTemplate.isFree;
 
   const requestDownload = () => {
     if (!canDownload) {
@@ -1552,6 +1654,7 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
   const dark = active === "stories";
   const items: { tab: Tab; label: string; icon: NavIconName }[] = [
     { tab: "templates", label: "Templates", icon: "templates" },
+    { tab: "browse", label: "Category", icon: "browse" },
     { tab: "search", label: "Search", icon: "search" },
     // { tab: "products", label: "Products", icon: "products" },
     { tab: "profile", label: "Profile", icon: "profile" },
@@ -1562,7 +1665,7 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
       <div className="mx-auto flex w-auto items-center justify-center gap-2">
         {items.map((item) => {
           const isNowPlaying = item.tab === "stories" && nowPlaying && active === "stories";
-          const itemClassName = `pointer-events-auto flex h-14 flex-none cursor-pointer touch-manipulation select-none items-center justify-center gap-2 overflow-hidden rounded-2xl bg-black/35 text-white shadow-[0_4px_14px_rgba(0,0,0,0.16)] backdrop-blur-xl transition-all ${active === item.tab ? "w-auto scale-105 px-4" : "w-14 px-0 opacity-90 hover:opacity-100"}`;
+          const itemClassName = `pointer-events-auto flex h-14 w-14 flex-none cursor-pointer touch-manipulation select-none items-center justify-center overflow-hidden rounded-2xl bg-black/35 px-0 text-white shadow-[0_4px_14px_rgba(0,0,0,0.16)] backdrop-blur-xl transition-all ${active === item.tab ? "scale-105" : "opacity-90 hover:opacity-100"}`;
 
           if (isNowPlaying) {
             return (
@@ -1592,7 +1695,6 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
                     nowPlaying.onTogglePlaying();
                   }}
                 />
-                {active === item.tab ? <span className="max-w-28 truncate whitespace-nowrap text-sm font-medium">{nowPlaying.story.title}</span> : null}
               </div>
             );
           }
@@ -1610,7 +1712,6 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
               className={itemClassName}
             >
               <NavIcon name={item.icon} active={active === item.tab} dark={dark} />
-              {active === item.tab ? <span className="whitespace-nowrap text-sm font-medium">{item.label}</span> : null}
             </button>
           );
         })}
@@ -1623,9 +1724,9 @@ type NavIconName = "templates" | "browse" | "search" | "stories" | "products" | 
 
 function NavIcon({ name, active, dark }: { name: NavIconName; active: boolean; dark: boolean }) {
   const Icon = name === "templates"
-    ? LayoutTemplate
+    ? House
     : name === "browse"
-      ? Compass
+      ? LayoutGrid
       : name === "search"
         ? Search
       : name === "stories"
@@ -2064,6 +2165,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading }: { temp
         <p className="mt-1 max-w-[calc(100%-4rem)] text-xs leading-4 text-white/72">{template.description}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium text-white/72">
           <span className="rounded-full bg-white/15 px-2.5 py-1 text-white backdrop-blur">{template.category}</span>
+          {template.isFree ? <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-black">Free</span> : null}
           <span>{template.time}</span><span className="h-1 w-1 rounded-full bg-white/45" /><span>{template.difficulty}</span><span className="h-1 w-1 rounded-full bg-white/45" /><span>{template.supplies}</span>
         </div>
         <button type="button" onClick={onDownload} disabled={downloading} aria-busy={downloading} className="pointer-events-auto mb-3 mt-3 flex h-11 min-w-[178px] items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98] disabled:opacity-70">
@@ -2112,7 +2214,7 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
   const videoSrc = template.videoSrc;
   const videoEmbedUrl = template.videoEmbedUrl;
   const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
-  const { play: youtubePlay, pause: youtubePause, ready: youtubeReady, playing: youtubeStarted } = useYoutubePlayer(youtubeContainerRef, embed?.id ?? "", true);
+  const { play: youtubePlay, pause: youtubePause, ready: youtubeReady, playing: youtubeStarted } = useYoutubePlayer(youtubeContainerRef, embed?.id ?? "", true, true);
   const intersectingRef = useRef(false);
 
   useEffect(() => {
@@ -2245,34 +2347,18 @@ function Motif({ template }: { template: Template }) {
   );
 }
 
-function CategoryArt({ index }: { index: number }) {
-  const shapes = [
-    "from-[#efe8de] via-[#ddd0c2] to-[#c7b39e]",
-    "from-[#f2ece6] via-[#d8c4b8] to-[#b8a08c]",
-    "from-[#f4f1ea] via-[#d8dedf] to-[#b8c2cc]",
-  ];
-  return <div className={`h-28 rounded-[24px] bg-gradient-to-br ${shapes[index % shapes.length]} opacity-90`} />;
-}
+function CategoryIcon({ icon }: { icon?: string }) {
+  const Icon = {
+    hammer: Hammer,
+    palette: Palette,
+    puzzle: Puzzle,
+    pencil: Pencil,
+    "clipboard-list": ClipboardList,
+    "graduation-cap": GraduationCap,
+    "book-open": BookOpen,
+  }[icon ?? ""] ?? Shapes;
 
-function CategoryIcon({ index }: { index: number }) {
-  const paths = [
-    "M6 4.5h9l3 3v12H6v-15Zm9 0v3h3M8.5 12h7m-7 3h5",
-    "M5 18.5 9 14l3 2 5-7 2 9.5H5Zm11-10.5 1.5-2",
-    "m5 9 7-5 7 5m-11 2.5h8v7H8v-7Zm4-2v9",
-    "m4 10 8-6 8 6m-14 0v9h12v-9M9 19v-5h6v5",
-    "M12 4.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 1 0 0-15Zm-3 6h.01m5.98 0h.01M9 14c1.7 1.4 4.3 1.4 6 0",
-    "m7 8 5-3 5 3v10H7V8Zm-2 3h14m-9 3h4",
-    "M12 4.5c4.8 0 8 3.2 8 7.5s-3.2 7.5-8 7.5-8-3.2-8-7.5 3.2-7.5 8-7.5Zm-3 7.5h6",
-    "M12 4v3m0 10v3m8-8h-3M7 12H4m13.7-5.7-2.1 2.1M8.4 15.6l-2.1 2.1m0-11.4 2.1 2.1m7.2 7.2 2.1 2.1",
-  ];
-
-  return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center text-black/65">
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d={paths[index % paths.length]} />
-      </svg>
-    </span>
-  );
+  return <Icon aria-hidden="true" className="h-5 w-5 shrink-0" strokeWidth={1.7} />;
 }
 
 function SubscribeIcon() {

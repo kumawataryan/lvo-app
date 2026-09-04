@@ -3,8 +3,17 @@ import type { NextConfig } from "next";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.29.96"],
+  allowedDevOrigins: ["192.168.29.96", "192.168.29.167"],
   images: {
+    localPatterns: [
+      {
+        pathname: "/**",
+        search: "",
+      },
+      {
+        pathname: "/api/dropbox/content",
+      },
+    ],
     remotePatterns: [
       ...(supabaseUrl ? [{
         protocol: "https" as const,
@@ -15,6 +24,11 @@ const nextConfig: NextConfig = {
         protocol: "https" as const,
         hostname: "www.google.com",
         pathname: "/s2/favicons",
+      },
+      {
+        protocol: "https" as const,
+        hostname: "i.ytimg.com",
+        pathname: "/vi/**",
       },
     ],
   },

@@ -2,7 +2,8 @@ import CraftApp from "@/components/craft-app";
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
-import { listPublishedTemplates } from "@/lib/templates/repository";
+import { listPublishedTemplates, listRootTemplateCategories } from "@/lib/templates/repository";
+import { DEFAULT_TEMPLATE_CATEGORIES } from "@/lib/templates/types";
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { redirect } from "next/navigation";
 
@@ -11,13 +12,17 @@ export const dynamic = "force-dynamic";
 export default async function Home({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab } = await searchParams;
 
-  if (!isSupabaseConfigured()) return <CraftApp initialTab={tab} />;
+  if (!isSupabaseConfigured()) return <CraftApp initialTab={tab} initialCategories={DEFAULT_TEMPLATE_CATEGORIES} />;
 
   const supabase = await createSupabaseAuthServerClient();
-  const [initialTemplates, { data: { user } }] = await Promise.all([
+  const [initialTemplates, initialCategories, { data: { user } }] = await Promise.all([
     listPublishedTemplates().catch((error) => {
       console.error("Failed to preload templates", error);
       return [];
+    }),
+    listRootTemplateCategories().catch((error) => {
+      console.error("Failed to preload template categories", error);
+      return DEFAULT_TEMPLATE_CATEGORIES;
     }),
     supabase.auth.getUser().catch(() => ({ data: { user: null } })),
   ]);
@@ -26,16 +31,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   const subscribed = Boolean(purchase);
 
   let parentName = "";
-  let profileKids: Array<{ id: string; name: string; avatar: string }> = [];
+  let profileKids: Array<{ id: string; name: string; birthYear: number; avatar: string }> = [];
   if (user) {
     const onboarding = await getFamilyOnboarding(supabase, user.id).catch(() => null);
     if (!onboarding?.completed) redirect("/onboarding");
     parentName = onboarding.parentName;
-    profileKids = onboarding.kids.map(({ id, name, avatar }) => ({ id, name, avatar }));
+    profileKids = onboarding.kids.map(({ id, name, birthYear, avatar }) => ({ id, name, birthYear, avatar }));
   }
 
   return <CraftApp
     initialTemplates={initialTemplates}
+    initialCategories={initialCategories}
     canAddTemplates={canUserAddTemplates(user)}
     subscribed={subscribed}
     initialTab={tab}

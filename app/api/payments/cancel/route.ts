@@ -1,5 +1,6 @@
 import { createRazorpayClient, isRazorpayConfigured } from "@/lib/razorpay/client";
 import { isPaypalConfigured, paypalFetch } from "@/lib/paypal/client";
+import { createStripeClient, isStripeConfigured } from "@/lib/stripe/client";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { getActivePurchase, markPurchaseStatus, setCancelAtPeriodEnd } from "@/lib/payments/repository";
 
@@ -33,6 +34,12 @@ export async function POST() {
         body: JSON.stringify({ reason: "Cancelled by customer" }),
       });
       await markPurchaseStatus(purchase.id, { status: "cancelled" });
+    } else if (purchase.gateway === "stripe") {
+      if (!isStripeConfigured() || !purchase.external_reference) {
+        return Response.json({ error: "No active subscription to cancel." }, { status: 404 });
+      }
+      await createStripeClient().subscriptions.update(purchase.external_reference, { cancel_at_period_end: true });
+      await setCancelAtPeriodEnd(purchase.id, true);
     } else {
       return Response.json({ error: "This subscription was activated manually — contact support to cancel it." }, { status: 400 });
     }
