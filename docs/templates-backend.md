@@ -30,4 +30,15 @@ Database columns store bucket-relative paths, not complete URLs:
 - gallery `storage_path`: `paper-flower-bouquet/gallery-1.webp`
 - `printable_path`: `paper-flower-bouquet/printable.pdf`
 
+## Tags and search
+
+Templates can have up to 20 normalized tags. Tags are stored in `template_tags` and linked through
+`template_tag_assignments`, allowing reuse without duplicating tag data. The `templates.search_text`
+column combines the title, description, and assigned tags and is backed by a partial trigram GIN
+index for published-template search. Apply `202609110001_template_tags.sql` before deploying the
+tag-enabled application code.
+
+Apply `202609110002_smart_template_search.sql` to enable relevance-ranked, order-independent,
+typo-tolerant search across template titles, descriptions, and tags.
+
 The server repository turns public media paths into Supabase CDN URLs. Printable paths remain private for the future subscription entitlement flow.

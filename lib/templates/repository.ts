@@ -33,7 +33,10 @@ type TemplateRow = {
     sort_order: number;
     supply: { id: string; name: string; icon: string | null };
   }>;
+  tag_assignments?: Array<{ tag: { id: string; name: string; slug: string } }>;
 };
+
+export type TemplateTag = { id: string; name: string; slug: string };
 
 const templateBaseFields = `
   id,
@@ -59,7 +62,8 @@ const templateFields = `${templateBaseFields}
 
 const templateRelations = `
   gallery_images:template_gallery_images(id, storage_path, alt_text, sort_order),
-  template_supplies(quantity, notes, sort_order, supply:supplies(id, name, icon))
+  template_supplies(quantity, notes, sort_order, supply:supplies(id, name, icon)),
+  tag_assignments:template_tag_assignments(tag:template_tags(id, name, slug))
 `;
 
 const templateSelection = `${templateFields}
@@ -126,6 +130,7 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     supplies: [...row.template_supplies]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((item) => ({ ...item.supply, quantity: item.quantity, notes: item.notes, sortOrder: item.sort_order })),
+    tags: (row.tag_assignments ?? []).map(({ tag }) => tag.name).sort((a, b) => a.localeCompare(b)),
   };
 }
 
@@ -163,6 +168,34 @@ export async function getTemplateCategoryBySlug(slug: string): Promise<TemplateC
   return { id: data.id, name: data.name, slug: data.slug, icon: fallback?.icon };
 }
 
+export async function getTemplateTagBySlug(slug: string): Promise<TemplateTag | null> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.from("template_tags").select("id, name, slug").eq("slug", slug).maybeSingle();
+  if (error) throw new Error(`Unable to load template tag: ${error.message}`);
+  return data as TemplateTag | null;
+}
+
+export async function listPublishedTemplatesByTag(tagSlug: string, options: { offset?: number; limit?: number } = {}) {
+  const supabase = createSupabaseServerClient();
+  const offset = Math.max(options.offset ?? 0, 0);
+  const limit = Math.min(Math.max(options.limit ?? 40, 1), 100);
+  const taggedSelection = templateSelection
+    .replace("tag_assignments:template_tag_assignments(", "tag_assignments:template_tag_assignments!inner(")
+    .replace("tag:template_tags(id, name, slug)", "tag:template_tags!inner(id, name, slug)");
+  const { data, error, count } = await supabase
+    .from("templates")
+    .select(taggedSelection, { count: "exact" })
+    .eq("status", "published")
+    .lte("published_at", new Date().toISOString())
+    .eq("tag_assignments.tag.slug", tagSlug)
+    .order("sort_order", { ascending: true })
+    .order("published_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) throw new Error(`Unable to load tagged templates: ${error.message}`);
+  return { templates: (data as unknown as TemplateRow[]).map(mapTemplate), total: count ?? 0 };
+}
+
 export async function listTemplateSubcategories(parentId: string): Promise<TemplateCategory[]> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
@@ -184,6 +217,31 @@ export async function listTemplateSubcategories(parentId: string): Promise<Templ
 
 export async function listPublishedTemplates(filters: TemplateListFilters = {}) {
   const supabase = createSupabaseServerClient();
+  if (filters.search) {
+    const limit = Math.min(Math.max(filters.limit ?? 50, 1), 100);
+    const { data: matches, error: searchError } = await supabase.rpc("search_published_templates", {
+      search_query: filters.search,
+      result_limit: limit,
+      category_slug: filters.category ?? null,
+      featured_only: filters.featured ?? null,
+    });
+    if (searchError) throw new Error(`Unable to search templates: ${searchError.message}`);
+    const rankedIds = (matches ?? []).map((match: { template_id: string }) => match.template_id);
+    if (!rankedIds.length) return [];
+
+    const { data, error } = await supabase
+      .from("templates")
+      .select(templateSelection)
+      .in("id", rankedIds)
+      .eq("status", "published")
+      .lte("published_at", new Date().toISOString());
+    if (error) throw new Error(`Unable to load search results: ${error.message}`);
+    const rank = new Map(rankedIds.map((id: string, index: number) => [id, index]));
+    return (data as unknown as TemplateRow[])
+      .map(mapTemplate)
+      .sort((a, b) => (rank.get(a.id) ?? rankedIds.length) - (rank.get(b.id) ?? rankedIds.length));
+  }
+
   const execute = (selection: string, categoryPath: string) => {
     let query = supabase
       .from("templates")
@@ -195,7 +253,6 @@ export async function listPublishedTemplates(filters: TemplateListFilters = {}) 
 
     if (filters.category) query = query.eq(categoryPath, filters.category);
     if (filters.featured !== undefined) query = query.eq("is_featured", filters.featured);
-    if (filters.search) query = query.ilike("title", `%${filters.search}%`);
     return query.limit(Math.min(Math.max(filters.limit ?? 50, 1), 100));
   };
 
@@ -247,6 +304,24 @@ export async function getPublishedTemplateBySlug(slug: string) {
       .maybeSingle());
   }
 
+  if (error) throw new Error(`Unable to load template: ${error.message}`);
+  return data ? mapTemplate(data as unknown as TemplateRow) : null;
+}
+
+export async function getPublishedTemplateById(id: string) {
+  const supabase = createSupabaseServerClient();
+  const execute = (selection: string) => supabase
+    .from("templates")
+    .select(selection)
+    .eq("id", id)
+    .eq("status", "published")
+    .lte("published_at", new Date().toISOString())
+    .maybeSingle();
+
+  let { data, error } = await execute(templateSelection);
+  if (error) ({ data, error } = await execute(templateSelectionWithoutAge));
+  if (error) ({ data, error } = await execute(legacyTemplateSelection));
+  if (error) ({ data, error } = await execute(legacyTemplateSelectionWithoutAge));
   if (error) throw new Error(`Unable to load template: ${error.message}`);
   return data ? mapTemplate(data as unknown as TemplateRow) : null;
 }

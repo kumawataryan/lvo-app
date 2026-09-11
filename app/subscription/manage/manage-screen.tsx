@@ -62,11 +62,10 @@ export function ManageSubscriptionScreen({ purchase }: { purchase: Purchase }) {
 
   return (
     <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
-      <div className="mx-auto min-h-dvh w-full max-w-[430px] bg-white px-5 pb-8 pt-5">
-        <header className="flex h-11 items-center justify-between">
-          <h1 className="text-xl font-semibold tracking-tight">Subscription</h1>
-          <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/?tab=profile"); }} className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f2f2f2] transition active:scale-95"><X className="h-5 w-5" /></button>
-        </header>
+      <div className="min-h-dvh w-screen max-w-none bg-white px-5 pb-8 pt-5">
+      <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/profile"); }} className="ml-auto flex h-10 w-10 items-center justify-center rounded-lg bg-[#f2f2f2] transition active:scale-95"><X className="h-5 w-5" /></button>
+      <div className="mx-auto w-full max-w-none min-[1033px]:max-w-2xl">
+        <h1 className="mt-4 text-xl font-semibold tracking-tight">Subscription</h1>
 
         <section className="mt-8 rounded-2xl bg-black p-5 text-white">
           <div className="flex items-start justify-between gap-4">
@@ -131,6 +130,7 @@ export function ManageSubscriptionScreen({ purchase }: { purchase: Purchase }) {
               </button>
             )
           ) : null}
+      </div>
       </div>
     </main>
   );

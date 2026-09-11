@@ -179,13 +179,16 @@ export function SubscriptionScreen() {
   };
 
   return (
-    <main className="fixed inset-0 h-[100dvh] overflow-y-auto overscroll-contain bg-white text-black">
-      <div className="mx-auto min-h-full w-full max-w-[430px] bg-white">
-        <div className="px-4 pt-4">
+    <main className="fixed inset-0 h-[100dvh] w-screen max-w-none overflow-y-auto overscroll-contain bg-white text-black">
+      <div className="min-h-full w-screen max-w-none bg-white">
+      <div className="px-4 pt-4 md:px-6 md:pt-6 lg:px-8">
+        <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] text-black transition active:scale-95">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="mx-auto w-full max-w-none min-[1033px]:max-w-2xl">
+        <div className="px-4 md:px-6 lg:px-8">
           <section className="relative aspect-video w-full overflow-hidden rounded-[28px] bg-black [clip-path:inset(0_round_28px)]">
-            <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="absolute right-3 top-3 z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-black/70 text-white backdrop-blur-sm transition active:scale-95">
-              <X className="h-6 w-6" />
-            </button>
             <video
               className="h-full w-full cursor-pointer rounded-[28px] object-cover [clip-path:inset(0_round_28px)]"
               src="/name-template-mobile.mp4"
@@ -202,8 +205,8 @@ export function SubscriptionScreen() {
           </section>
         </div>
 
-        <section className="bg-white px-5 pb-6 pt-5">
-          <div className="mx-auto max-w-sm space-y-2.5">
+        <section className="bg-white px-5 pb-6 pt-5 md:px-6 lg:px-8">
+          <div className="grid w-full grid-cols-1 gap-2.5">
             {benefits.map((benefit) => (
               <div key={benefit} className="flex items-center gap-3 text-sm font-medium text-black/72">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black text-white"><Check className="h-3.5 w-3.5" strokeWidth={2.5} /></span>
@@ -275,7 +278,7 @@ export function SubscriptionScreen() {
 
         </section>
 
-        <section className="bg-white px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <section className="bg-white px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 md:px-6 lg:px-8">
           {errorMessage ? <p className="mb-2 text-center text-xs font-medium text-red-600">{errorMessage}</p> : null}
 
           <button
@@ -294,6 +297,7 @@ export function SubscriptionScreen() {
             <Link href="/privacy" className="underline underline-offset-2">Privacy Policy</Link>.
           </p>
         </section>
+      </div>
       </div>
     </main>
   );

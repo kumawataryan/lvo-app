@@ -58,6 +58,7 @@ export type PublishedTemplate = {
   category: TemplateCategory;
   galleryImages: TemplateGalleryImage[];
   supplies: TemplateSupply[];
+  tags: string[];
 };
 
 export type TemplateListFilters = {

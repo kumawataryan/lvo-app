@@ -1,80 +1,79 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useState, type FormEvent } from "react";
 import Image from "next/image";
-import { ArrowRight, LoaderCircle, X } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, LoaderCircle, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type LoginStep = "email" | "code";
-const OTP_LENGTH = 8;
+type LoginMode = "signin" | "signup";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [step, setStep] = useState<LoginStep>("email");
+  const [mode, setMode] = useState<LoginMode>("signin");
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const codeInputsRef = useRef<Array<HTMLInputElement | null>>([]);
 
-  const sendCode = async (event?: FormEvent) => {
-    event?.preventDefault();
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) return;
+    if (!normalizedEmail || !password) return;
 
     setLoading(true);
     setMessage(null);
     const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithOtp({
+
+    if (mode === "signin") {
+      const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+      setLoading(false);
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      router.replace("/");
+      router.refresh();
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
-      options: { shouldCreateUser: true },
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/` },
     });
     setLoading(false);
-
     if (error) {
       setMessage(error.message);
       return;
     }
-
-    setEmail(normalizedEmail);
-    setCode("");
-    setStep("code");
+    if (data.session) {
+      router.replace("/");
+      router.refresh();
+      return;
+    }
+    setMessage("Check your email to confirm your account, then sign in.");
+    setMode("signin");
+    setPassword("");
   };
 
-  const verifyCode = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!new RegExp(`^\\d{${OTP_LENGTH}}$`).test(code)) return;
+  const sendPasswordReset = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setMessage("Enter your email above first, then tap \"Forgot password?\".");
+      return;
+    }
 
     setLoading(true);
     setMessage(null);
     const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
+    });
     setLoading(false);
-
-    if (error) {
-      setMessage("That code is invalid or has expired. Try again.");
-      return;
-    }
-
-    router.replace("/");
-    router.refresh();
-  };
-
-  const updateCodeDigit = (index: number, value: string) => {
-    const digit = value.replace(/\D/g, "").slice(-1);
-    const digits = code.split("");
-    if (digit) digits[index] = digit;
-    else digits.splice(index, 1);
-    setCode(digits.filter(Boolean).join("").slice(0, OTP_LENGTH));
-    if (digit && index < OTP_LENGTH - 1) codeInputsRef.current[index + 1]?.focus();
-  };
-
-  const handleCodeKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Backspace" && !code[index] && index > 0) codeInputsRef.current[index - 1]?.focus();
-    if (event.key === "ArrowLeft" && index > 0) codeInputsRef.current[index - 1]?.focus();
-    if (event.key === "ArrowRight" && index < OTP_LENGTH - 1) codeInputsRef.current[index + 1]?.focus();
+    setMessage(error ? error.message : "Check your email for a link to set a new password.");
   };
 
   const signInWithGoogle = async () => {
@@ -93,83 +92,66 @@ export default function LoginPage() {
 
   return (
     <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col bg-white px-5 pb-8 pt-5">
+      <div className="flex min-h-dvh w-full flex-col bg-white px-5 pb-8 pt-5">
         <button type="button" aria-label="Close login" onClick={() => router.push("/")} className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95">
           <X className="h-5 w-5" />
         </button>
 
+        <div className="relative mx-auto flex w-full max-w-xl flex-1 flex-col">
         <div className="my-auto py-10">
           <Image src="/lvo.jpg" alt="LVO Crafts" width={56} height={56} priority className="h-14 w-14 rounded-2xl object-cover" />
 
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight">{step === "email" ? "Welcome" : "Check your email"}</h1>
-          <p className="mt-2 text-sm leading-6 text-black/50">
-            {step === "email" ? "Sign in or create your account. No password needed." : `Enter the eight-digit code sent to ${email}.`}
-          </p>
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight">{mode === "signin" ? "Welcome back" : "Create your account"}</h1>
 
-          {step === "email" ? (
-            <>
-              <form onSubmit={sendCode} className="mt-8 space-y-3">
-                <label htmlFor="login-email" className="sr-only">Email address</label>
-                <input id="login-email" type="email" inputMode="email" autoComplete="email" required autoFocus value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" className="h-13 w-full rounded-xl bg-[#f2f2f2] px-4 text-base outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
-                <button type="submit" disabled={loading || !email.trim()} className="flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
-                  {loading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <>Continue <ArrowRight className="h-4 w-4" /></>}
-                </button>
-              </form>
+          <form onSubmit={submit} className="mt-6 space-y-3">
+            <label htmlFor="login-email" className="sr-only">Email address</label>
+            <input id="login-email" type="email" inputMode="email" autoComplete="email" required autoFocus value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" className="h-13 w-full rounded-xl bg-[#f2f2f2] px-4 text-base outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
 
-              <div className="my-6 flex items-center gap-3 text-xs text-black/35"><span className="h-px flex-1 bg-black/8" /><span>or</span><span className="h-px flex-1 bg-black/8" /></div>
-
-              <button type="button" disabled={loading} onClick={signInWithGoogle} className="flex h-13 w-full items-center justify-center gap-3 rounded-xl border border-black/10 bg-white text-sm font-semibold transition active:scale-[0.99] disabled:opacity-50">
-                <GoogleIcon /> Continue with Google
-              </button>
-            </>
-          ) : (
-            <form onSubmit={verifyCode} className="mt-8">
-              <fieldset>
-                <legend className="sr-only">Eight-digit verification code</legend>
-                <div
-                  className="grid grid-cols-8 gap-1.5"
-                  onPaste={(event) => {
-                    const pastedCode = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, OTP_LENGTH);
-                    if (!pastedCode) return;
-                    event.preventDefault();
-                    setCode(pastedCode);
-                    codeInputsRef.current[Math.min(pastedCode.length, OTP_LENGTH) - 1]?.focus();
-                  }}
+            <div>
+              <label htmlFor="login-password" className="sr-only">Password</label>
+              <div className="relative">
+                <input id="login-password" type={showPassword ? "text" : "password"} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={mode === "signup" ? 6 : undefined} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" className="h-13 w-full rounded-xl bg-[#f2f2f2] px-4 pr-12 text-base outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  tabIndex={-1}
+                  className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-black/40 transition hover:text-black/70"
                 >
-                  {Array.from({ length: OTP_LENGTH }, (_, index) => (
-                    <input
-                      key={index}
-                      ref={(element) => { codeInputsRef.current[index] = element; }}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete={index === 0 ? "one-time-code" : "off"}
-                      aria-label={`Verification code digit ${index + 1}`}
-                      maxLength={1}
-                      autoFocus={index === 0}
-                      value={code[index] ?? ""}
-                      onChange={(event) => updateCodeDigit(index, event.target.value)}
-                      onKeyDown={(event) => handleCodeKeyDown(index, event)}
-                      onFocus={(event) => event.currentTarget.select()}
-                      className="aspect-square min-w-0 rounded-xl bg-[#f2f2f2] text-center text-xl font-semibold outline-none ring-black/10 transition focus:ring-2"
-                    />
-                  ))}
-                </div>
-              </fieldset>
-              <button type="submit" disabled={loading || !new RegExp(`^\\d{${OTP_LENGTH}}$`).test(code)} className="mt-4 flex h-13 w-full items-center justify-center rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
-                {loading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : "Verify and continue"}
-              </button>
-              <div className="mt-5 flex items-center justify-center gap-4 text-sm font-medium">
-                <button type="button" disabled={loading} onClick={() => void sendCode()} className="text-black/55 disabled:opacity-40">{loading ? "Sending…" : "Resend code"}</button>
-                <span className="h-4 w-px bg-black/10" />
-                <button type="button" onClick={() => { setStep("email"); setCode(""); setMessage(null); }} className="text-black/55">Change email</button>
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
-            </form>
-          )}
+              <button type="button" disabled={loading} onClick={sendPasswordReset} className="mt-2 block text-xs font-medium text-black/45 disabled:opacity-40">
+                Forgot password?
+              </button>
+            </div>
+
+            <button type="submit" disabled={loading || !email.trim() || !password} className="flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
+              {loading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <>{mode === "signin" ? "Sign in" : "Sign up"} <ArrowRight className="h-4 w-4" /></>}
+            </button>
+          </form>
+
+          <button
+            type="button"
+            onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setMessage(null); }}
+            className="mt-4 block w-full text-center text-sm text-black/55"
+          >
+            {mode === "signin" ? "Don't have an account? " : "Already have an account? "}
+            <span className="font-semibold text-black">{mode === "signin" ? "Sign up" : "Sign in"}</span>
+          </button>
+
+          <div className="my-5 flex items-center gap-3 text-xs text-black/35"><span className="h-px flex-1 bg-black/8" /><span>or</span><span className="h-px flex-1 bg-black/8" /></div>
+
+          <button type="button" disabled={loading} onClick={signInWithGoogle} className="flex h-13 w-full items-center justify-center gap-3 rounded-xl border border-black/10 bg-white text-sm font-semibold transition active:scale-[0.99] disabled:opacity-50">
+            <GoogleIcon /> Continue with Google
+          </button>
 
           {message ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p> : null}
         </div>
 
         <p className="text-center text-[11px] leading-5 text-black/35">By continuing, you agree to the Terms and Privacy Policy.</p>
+        </div>
       </div>
     </main>
   );

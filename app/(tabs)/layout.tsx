@@ -1,18 +1,20 @@
-import CraftApp from "@/components/craft-app";
+import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+
+import AppShell from "@/components/craft-app";
 import { canUserAddTemplates } from "@/lib/auth/permissions";
+import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import { listPublishedTemplates, listRootTemplateCategories } from "@/lib/templates/repository";
 import { DEFAULT_TEMPLATE_CATEGORIES } from "@/lib/templates/types";
-import { getFamilyOnboarding } from "@/lib/onboarding/server";
-import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const { tab } = await searchParams;
-
-  if (!isSupabaseConfigured()) return <CraftApp initialTab={tab} initialCategories={DEFAULT_TEMPLATE_CATEGORIES} />;
+export default async function TabsLayout({ children }: { children: ReactNode }) {
+  if (!isSupabaseConfigured()) {
+    return <AppShell initialCategories={DEFAULT_TEMPLATE_CATEGORIES}>{children}</AppShell>;
+  }
 
   const supabase = await createSupabaseAuthServerClient();
   const [initialTemplates, initialCategories, { data: { user } }] = await Promise.all([
@@ -39,23 +41,26 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
     profileKids = onboarding.kids.map(({ id, name, birthYear, avatar }) => ({ id, name, birthYear, avatar }));
   }
 
-  return <CraftApp
-    initialTemplates={initialTemplates}
-    initialCategories={initialCategories}
-    canAddTemplates={canUserAddTemplates(user)}
-    subscribed={subscribed}
-    initialTab={tab}
-    parentName={parentName}
-    subscription={purchase ? {
-      planId: purchase.plan_id,
-      billingType: purchase.billing_type,
-      status: purchase.status,
-      gateway: purchase.gateway,
-      amount: purchase.amount,
-      currency: purchase.currency,
-      currentPeriodEnd: purchase.current_period_end,
-      cancelAtPeriodEnd: purchase.cancel_at_period_end,
-    } : null}
-    profileKids={profileKids}
-  />;
+  return (
+    <AppShell
+      initialTemplates={initialTemplates}
+      initialCategories={initialCategories}
+      canAddTemplates={canUserAddTemplates(user)}
+      subscribed={subscribed}
+      parentName={parentName}
+      subscription={purchase ? {
+        planId: purchase.plan_id,
+        billingType: purchase.billing_type,
+        status: purchase.status,
+        gateway: purchase.gateway,
+        amount: purchase.amount,
+        currency: purchase.currency,
+        currentPeriodEnd: purchase.current_period_end,
+        cancelAtPeriodEnd: purchase.cancel_at_period_end,
+      } : null}
+      profileKids={profileKids}
+    >
+      {children}
+    </AppShell>
+  );
 }

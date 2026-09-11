@@ -14,19 +14,21 @@ export function LikedScreen({ templates: publishedTemplates, subscribed }: { tem
   const [quickTemplate, setQuickTemplate] = useState<Template | null>(null);
 
   return (
-    <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
-      <div className="mx-auto min-h-dvh w-full max-w-[430px] bg-white px-4 pb-8 pt-5">
+    <main className="fixed inset-0 w-screen max-w-none overflow-y-auto bg-[#f4f3f0] text-black">
+      <div className="min-h-dvh w-screen max-w-none bg-white px-3 pb-8 pt-5 md:px-4 lg:px-5">
         <header>
-          <button type="button" aria-label="Back to profile" onClick={() => router.push("/?tab=profile")} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95"><ArrowLeft className="h-5 w-5" /></button>
+          <button type="button" aria-label="Back to profile" onClick={() => router.push("/profile")} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95"><ArrowLeft className="h-5 w-5" /></button>
         </header>
 
+        <div className="w-full">
         <section className="mt-9">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f2f2f2] text-red-500"><Heart className="h-6 w-6" fill="currentColor" /></span>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight">Liked</h1>
           <p className="mt-1 text-sm text-black/40">{templates.length} {templates.length === 1 ? "template" : "templates"}</p>
         </section>
 
-        {templates.length ? <div className="mt-7 grid grid-cols-2 gap-2">{templates.map((template) => <TemplateCard key={template.id} template={template} statusIcon="like" onOpenDetail={() => router.push(`/templates/${template.slug}`)} onQuickActions={() => setQuickTemplate(template)} />)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No liked templates</div>}
+        {templates.length ? <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 min-[1033px]:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9">{templates.map((template) => <TemplateCard key={template.id} template={template} statusIcon="like" onOpenDetail={() => router.push(`/t/${template.id}`)} onQuickActions={() => setQuickTemplate(template)} />)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No liked templates</div>}
+        </div>
       </div>
       {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} subscribed={subscribed} onClose={() => setQuickTemplate(null)} /> : null}
     </main>

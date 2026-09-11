@@ -5,7 +5,9 @@ import { Check, ChevronDown, FileText, Images, Link2, LoaderCircle, Plus, Upload
 import { useRouter } from "next/navigation";
 
 import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
+import { TemplateTopBar, tabRoute } from "@/components/craft-app";
 
 type Category = { id: string; name: string; parentId: string | null };
 type UploadRecord = { path: string };
@@ -20,7 +22,7 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function AddTemplateForm({ categories }: { categories: Category[] }) {
+export function AddTemplateForm({ categories, subscribed = false }: { categories: Category[]; subscribed?: boolean }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -32,6 +34,8 @@ export function AddTemplateForm({ categories }: { categories: Category[] }) {
   const [duration, setDuration] = useState("15");
   const [difficulty, setDifficulty] = useState("easy");
   const [supplies, setSupplies] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [printable, setPrintable] = useState<File | null>(null);
   const [isFree, setIsFree] = useState(false);
@@ -75,6 +79,16 @@ export function AddTemplateForm({ categories }: { categories: Category[] }) {
     setCategoryIds((current) => current.includes(categoryId)
       ? current.filter((id) => id !== categoryId)
       : [...current, categoryId]);
+  };
+
+  const addTags = (value: string) => {
+    const candidates = value
+      .split(",")
+      .map((tag) => tag.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 40))
+      .filter(Boolean);
+    if (!candidates.length) return;
+    setTags((current) => [...new Set([...current, ...candidates])].slice(0, 20));
+    setTagInput("");
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -130,13 +144,14 @@ export function AddTemplateForm({ categories }: { categories: Category[] }) {
           isFree,
           galleryPaths,
           supplies: supplies.split(",").map((item) => item.trim()).filter(Boolean),
+          tags: [...tags, ...tagInput.split(",").map((item) => item.trim()).filter(Boolean)],
         }),
       });
-      const result = await response.json() as { slug?: string; error?: string };
-      if (!response.ok || !result.slug) throw new Error(result.error || "Could not publish this template.");
+      const result = await response.json() as { id?: string; error?: string };
+      if (!response.ok || !result.id) throw new Error(result.error || "Could not publish this template.");
 
       setStatus("Published");
-      router.replace(`/templates/${result.slug}`);
+      router.replace(`/t/${result.id}`);
       router.refresh();
     } catch (caughtError) {
       if (uploaded.length) {
@@ -153,17 +168,11 @@ export function AddTemplateForm({ categories }: { categories: Category[] }) {
   };
 
   return (
-    <main className="h-dvh overflow-y-auto overscroll-y-contain bg-[#f4f3f0] text-black">
-      <form onSubmit={submit} className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col bg-white px-5 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(18px+env(safe-area-inset-top))]">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-2xl font-semibold tracking-tight">New template</p>
-            <p className="mt-1 text-sm text-black/45">Add the essentials and publish.</p>
-          </div>
-          <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <main className="flex h-dvh flex-col overflow-hidden bg-white text-black">
+      <TemplateTopBar canAddTemplates={false} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} alwaysShowNav />
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+      <form onSubmit={submit} className="mx-auto flex w-full max-w-3xl flex-col px-5 pb-[calc(24px+env(safe-area-inset-bottom))] pt-2">
+        <p className="text-2xl font-semibold tracking-tight">New template</p>
 
         <div className="mt-7 space-y-5">
           <Field label="Video">
@@ -227,23 +236,24 @@ export function AddTemplateForm({ categories }: { categories: Category[] }) {
             ) : null}
           </Field>
 
-          <Field label="Age range">
-            <div className="flex items-center gap-2">
-              <input required aria-label="Minimum age" type="number" min={0} max={18} inputMode="numeric" value={minimumAge} onChange={(event) => setMinimumAge(event.target.value)} className="h-12 min-w-0 flex-1 rounded-xl bg-[#f2f2f2] px-4 text-center text-sm outline-none ring-black/10 transition focus:ring-2" />
-              <span className="text-xs text-black/35">to</span>
-              <input required aria-label="Maximum age" type="number" min={0} max={18} inputMode="numeric" value={maximumAge} onChange={(event) => setMaximumAge(event.target.value)} className="h-12 min-w-0 flex-1 rounded-xl bg-[#f2f2f2] px-4 text-center text-sm outline-none ring-black/10 transition focus:ring-2" />
-            </div>
-            <p className="mt-1.5 text-xs text-black/35">Years</p>
-          </Field>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Age range">
+              <AgeRangeSelector
+                minimumAge={Number(minimumAge)}
+                maximumAge={Number(maximumAge)}
+                onChange={(minimum, maximum) => { setMinimumAge(String(minimum ?? 0)); setMaximumAge(String(maximum ?? 18)); }}
+              />
+            </Field>
 
-          <Field label="Access">
-            <button type="button" role="switch" aria-checked={isFree} onClick={() => setIsFree((value) => !value)} className="flex h-12 w-full items-center justify-between rounded-xl bg-[#f2f2f2] px-4 text-sm font-medium">
-              <span>Free download</span>
-              <span className={`relative h-6 w-11 rounded-full transition ${isFree ? "bg-black" : "bg-black/15"}`}>
-                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${isFree ? "left-6" : "left-1"}`} />
-              </span>
-            </button>
-          </Field>
+            <Field label="Access">
+              <button type="button" role="switch" aria-checked={isFree} onClick={() => setIsFree((value) => !value)} className="flex h-12 w-full items-center justify-between rounded-xl bg-[#f2f2f2] px-4 text-sm font-medium">
+                <span>Free download</span>
+                <span className={`relative h-6 w-11 rounded-full transition ${isFree ? "bg-black" : "bg-black/15"}`}>
+                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${isFree ? "left-6" : "left-1"}`} />
+                </span>
+              </button>
+            </Field>
+          </div>
 
           <div className="grid grid-cols-2 gap-2.5">
             <Field label="Time in minutes">
@@ -264,6 +274,48 @@ export function AddTemplateForm({ categories }: { categories: Category[] }) {
           <Field label="Supplies" optional>
             <input value={supplies} onChange={(event) => setSupplies(event.target.value)} placeholder="Paper, scissors, glue" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
             <p className="mt-1.5 text-xs text-black/35">Separate items with commas.</p>
+          </Field>
+
+          <Field label="Tags" optional>
+            <div className="flex min-h-12 flex-wrap items-center gap-2 rounded-xl bg-[#f2f2f2] px-3 py-2 ring-black/10 transition focus-within:ring-2">
+              {tags.map((tag) => (
+                <span key={tag} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black px-2.5 text-xs font-medium text-white">
+                  {tag}
+                  <button type="button" aria-label={`Remove ${tag} tag`} onClick={() => setTags((current) => current.filter((item) => item !== tag))} className="flex h-5 w-5 items-center justify-center rounded text-white/65 transition hover:text-white">
+                    <X aria-hidden="true" className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagInput}
+                disabled={tags.length >= 20}
+                maxLength={40}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value.endsWith(",")) addTags(value);
+                  else setTagInput(value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === ",") {
+                    event.preventDefault();
+                    addTags(tagInput);
+                  } else if (event.key === "Backspace" && !tagInput && tags.length) {
+                    setTags((current) => current.slice(0, -1));
+                  }
+                }}
+                onPaste={(event) => {
+                  const value = event.clipboardData.getData("text");
+                  if (!value.includes(",")) return;
+                  event.preventDefault();
+                  addTags(value);
+                }}
+                onBlur={() => addTags(tagInput)}
+                placeholder={tags.length ? "Add another…" : "Type a tag and press Enter"}
+                aria-label="Add a search tag"
+                className="h-8 min-w-32 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-black/35 disabled:hidden"
+              />
+            </div>
+            {tags.length ? <p className="mt-1.5 text-right text-xs text-black/35">{tags.length}/20</p> : null}
           </Field>
 
           <Field label="Files">
@@ -300,6 +352,7 @@ export function AddTemplateForm({ categories }: { categories: Category[] }) {
           {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : <><Plus className="h-4 w-4" />Publish template</>}
         </button>
       </form>
+      </div>
       <Drawer open={categoryPickerOpen} onOpenChange={setCategoryPickerOpen}>
         <DrawerContent>
           <DrawerTitle className="text-lg font-semibold tracking-tight">Categories</DrawerTitle>

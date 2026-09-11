@@ -17,16 +17,17 @@ type DropboxOAuthError = {
 };
 
 export async function getDropboxAccessToken() {
-  const accessToken = envValue("DROPBOX_ACCESS_TOKEN");
-  if (accessToken) return accessToken;
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
 
   const appKey = envValue("DROPBOX_APP_KEY");
   const appSecret = envValue("DROPBOX_APP_SECRET");
   const refreshToken = envValue("DROPBOX_REFRESH_TOKEN");
-  if (!appKey || !appSecret || !refreshToken) {
+  if (!refreshToken) {
+    const accessToken = envValue("DROPBOX_ACCESS_TOKEN");
+    if (accessToken) return accessToken;
     throw new Error("Dropbox is not configured. Add DROPBOX_APP_KEY, DROPBOX_APP_SECRET, and DROPBOX_REFRESH_TOKEN.");
   }
+  if (!appKey || !appSecret) throw new Error("Dropbox refresh authentication requires DROPBOX_APP_KEY and DROPBOX_APP_SECRET.");
 
   const response = await fetch("https://api.dropboxapi.com/oauth2/token", {
     method: "POST",

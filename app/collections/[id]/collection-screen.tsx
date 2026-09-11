@@ -61,28 +61,30 @@ export function CollectionScreen({ collection, templates: publishedTemplates, su
       setDeleteError("Couldn’t delete this collection. Try again.");
       return;
     }
-    router.replace("/?tab=profile");
+    router.replace("/profile");
     router.refresh();
   };
 
   return (
     <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
-      <div className="mx-auto min-h-dvh w-full max-w-[430px] bg-white px-4 pb-8 pt-5">
+      <div className="min-h-dvh w-full bg-white px-3 pb-8 pt-5 md:px-4 lg:px-5">
         <header className="flex items-center justify-between gap-3">
-          <button type="button" aria-label="Back to profile" onClick={() => router.push("/?tab=profile")} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95"><ArrowLeft className="h-5 w-5" /></button>
+          <button type="button" aria-label="Back to profile" onClick={() => router.push("/profile")} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95"><ArrowLeft className="h-5 w-5" /></button>
           <div className="flex gap-2">
             {!collection.childAvatar ? <button type="button" aria-label={`Rename ${collectionName}`} onClick={() => { setRenameValue(collectionName); setRenameError(null); setRenameOpen(true); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f2f2f2] transition active:scale-95"><Pencil className="h-4 w-4" /></button> : null}
             <button type="button" aria-label={`Delete ${collectionName}`} onClick={() => { setDeleteError(null); setDeleteOpen(true); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 transition active:scale-95"><Trash2 className="h-4 w-4" /></button>
           </div>
         </header>
 
+        <div className="w-full">
         <section className="mt-9">
           {avatarSrc ? <Image src={avatarSrc} alt="" width={64} height={64} priority className="h-16 w-16 rounded-full object-cover" /> : <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#f2f2f2]"><Folder className="h-6 w-6 text-black/40" /></span>}
           <h1 className="mt-4 text-3xl font-semibold tracking-tight">{collectionName}</h1>
           <p className="mt-1 text-sm text-black/40">{templates.length} {templates.length === 1 ? "template" : "templates"}</p>
         </section>
 
-        {templates.length ? <div className="mt-7 grid grid-cols-2 gap-2">{templates.map((template) => <TemplateCard key={template.id} template={template} statusIcon="save" onOpenDetail={() => router.push(`/templates/${template.slug}`)} onQuickActions={() => setQuickTemplate(template)} />)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No saved templates</div>}
+        {templates.length ? <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 min-[1033px]:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9">{templates.map((template) => <TemplateCard key={template.id} template={template} statusIcon="save" onOpenDetail={() => router.push(`/t/${template.id}`)} onQuickActions={() => setQuickTemplate(template)} />)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No saved templates</div>}
+        </div>
       </div>
 
       {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} subscribed={subscribed} onClose={() => setQuickTemplate(null)} /> : null}

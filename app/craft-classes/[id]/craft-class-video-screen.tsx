@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { BottomNav } from "@/components/craft-app";
+import { BottomNav, tabRoute } from "@/components/craft-app";
 import type { CraftClassVideo } from "@/lib/craft-classes";
 import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { useYoutubePlayer } from "@/lib/youtube/use-youtube-player";
@@ -152,7 +152,7 @@ export function CraftClassVideoScreen({ craftClass }: { craftClass: CraftClassVi
           ) : null}
         </section>
 
-        <BottomNav active="browse" onChange={(tab) => router.push(tab === "templates" ? "/" : `/?tab=${tab}`)} />
+        <BottomNav active="browse" onChange={(tab) => router.push(tabRoute(tab))} />
       </div>
     </main>
   );

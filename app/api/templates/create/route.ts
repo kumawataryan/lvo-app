@@ -16,6 +16,7 @@ type CreateTemplateBody = {
   isFree?: unknown;
   galleryPaths?: unknown;
   supplies?: unknown;
+  tags?: unknown;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -60,6 +61,9 @@ export async function POST(request: Request) {
   const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 10) : [];
   const supplies = Array.isArray(body.supplies)
     ? [...new Set(body.supplies.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 20)
+    : [];
+  const tags = Array.isArray(body.tags)
+    ? [...new Set(body.tags.filter((item): item is string => typeof item === "string").map((item) => item.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
     : [];
   const ownedPrefix = `/lvo-files/${user.id}/`;
 
@@ -163,10 +167,22 @@ export async function POST(request: Request) {
         if (error) throw error;
       }
     }
+
+    if (tags.length) {
+      const tagRows = tags.map((name) => ({ name, slug: slugify(name) })).filter(({ slug }) => slug);
+      const { error: tagUpsertError } = await supabase.from("template_tags").upsert(tagRows, { onConflict: "slug", ignoreDuplicates: true });
+      if (tagUpsertError) throw tagUpsertError;
+      const { data: savedTags, error: tagsError } = await supabase.from("template_tags").select("id, slug").in("slug", tagRows.map(({ slug }) => slug));
+      if (tagsError) throw tagsError;
+      const { error: tagLinksError } = await supabase.from("template_tag_assignments").insert(
+        (savedTags ?? []).map((tag) => ({ template_id: templateId, tag_id: tag.id })),
+      );
+      if (tagLinksError) throw tagLinksError;
+    }
   } catch (error) {
     await supabase.from("templates").delete().eq("id", templateId);
     return Response.json({ error: error instanceof Error ? error.message : "Could not save template details." }, { status: 400 });
   }
 
-  return Response.json({ slug }, { status: 201 });
+  return Response.json({ id: templateId, slug }, { status: 201 });
 }

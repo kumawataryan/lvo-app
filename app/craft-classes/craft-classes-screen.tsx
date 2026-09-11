@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { BottomNav } from "@/components/craft-app";
+import { BottomNav, tabRoute } from "@/components/craft-app";
 import type { CraftClassVideo } from "@/lib/craft-classes";
 
 export function CraftClassesScreen({ classes }: { classes: CraftClassVideo[] }) {
@@ -27,7 +27,7 @@ export function CraftClassesScreen({ classes }: { classes: CraftClassVideo[] }) 
           <button
             type="button"
             aria-label="Back to categories"
-            onClick={() => router.push("/?tab=browse")}
+            onClick={() => router.push("/browse")}
             className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -92,7 +92,7 @@ export function CraftClassesScreen({ classes }: { classes: CraftClassVideo[] }) 
 
         <BottomNav
           active="browse"
-          onChange={(tab) => router.push(tab === "templates" ? "/" : `/?tab=${tab}`)}
+          onChange={(tab) => router.push(tabRoute(tab))}
         />
       </div>
     </main>

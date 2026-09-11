@@ -78,7 +78,7 @@ export function OnboardingFlow({ initialFamily }: { initialFamily: FamilyOnboard
     }
     if (screen === "onboarding") setScreen("parent");
     else if (screen === "edit") setScreen("list");
-    else router.replace("/?tab=profile");
+    else router.replace("/profile");
   }
 
   function openYears() {
@@ -89,12 +89,13 @@ export function OnboardingFlow({ initialFamily }: { initialFamily: FamilyOnboard
   const onboarding = screen === "parent" || screen === "onboarding";
   return (
     <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
-      <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col bg-white px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
+      <div className="flex min-h-dvh w-full flex-col bg-white px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
         <header className="flex h-11 items-center justify-between">
           {screen === "parent" ? <Image src="/lvo.jpg" alt="LVO Crafts" width={44} height={44} priority className="h-11 w-11 rounded-xl object-cover" /> : <button type="button" aria-label="Go back" disabled={saving} onClick={back} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] active:scale-95"><ArrowLeft className="h-5 w-5" /></button>}
           {onboarding ? <div className="flex gap-1" aria-label={`Step ${screen === "parent" ? 1 : 2} of 2`}><span className="h-1 w-5 rounded-full bg-black" /><span className={`h-1 w-5 rounded-full ${screen === "onboarding" ? "bg-black" : "bg-black/12"}`} /></div> : null}
         </header>
 
+        <div className="mx-auto flex w-full max-w-none flex-1 flex-col min-[1033px]:max-w-3xl">
         {screen === "parent" ? <section className="flex flex-1 flex-col pt-[18vh]">
           <h1 className="text-3xl font-semibold tracking-tight">Your name</h1>
           <input aria-label="Your name" autoFocus maxLength={60} autoComplete="name" value={parentName} onChange={(e) => setParentName(e.target.value)} placeholder="Name (optional)" className="mt-8 h-14 rounded-xl bg-[#f2f2f2] px-4 outline-none ring-black/10 placeholder:text-black/35 focus:ring-2" />
@@ -121,6 +122,7 @@ export function OnboardingFlow({ initialFamily }: { initialFamily: FamilyOnboard
             {screen === "onboarding" ? <><button type="button" disabled={saving || !formKid.birthYear} onClick={async () => { if (!valid()) return; const saved = await persist([...pendingKids, formKid]); if (saved) { router.replace("/"); router.refresh(); } }} className="flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white disabled:bg-black/20">{saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}Continue</button>{formKid.birthYear && pendingKids.length < 4 ? <button type="button" onClick={() => { if (!valid()) return; setPendingKids((items) => [...items, formKid]); setOnboardingKid(freshKid(pendingKids.length + 1)); }} className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-black/15 text-sm font-semibold"><Plus className="h-4 w-4" /> Add another child</button> : <button type="button" disabled={saving} onClick={async () => { const saved = await persist([]); if (saved) { router.replace("/"); router.refresh(); } }} className="mt-2 h-12 w-full rounded-xl border border-black/15 text-sm font-semibold">Skip for now</button>}</> : confirmRemove ? <div className="rounded-2xl bg-red-50 p-4"><p className="text-sm font-semibold text-red-800">Remove {formKid.name || "this child"}?</p><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setConfirmRemove(false)} className="h-11 rounded-xl bg-white text-sm font-semibold">Cancel</button><button type="button" disabled={saving} onClick={() => void removeKid()} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-semibold text-white">{saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}Remove</button></div></div> : <><button type="button" disabled={saving || !formKid.birthYear} onClick={() => void saveEdit()} className="flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white disabled:bg-black/20">{saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}{editIndex === null ? "Add child" : "Save changes"}</button>{editIndex !== null ? <button type="button" onClick={() => setConfirmRemove(true)} className="mt-2 flex h-12 w-full items-center justify-center gap-2 text-sm font-semibold text-red-600"><Trash2 className="h-4 w-4" /> Remove child</button> : null}</>}
           </div>
         </section> : null}
+        </div>
       </div>
 
       {yearOpen && formKid ? <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 px-2" onPointerDown={(e) => { if (e.target === e.currentTarget) setYearOpen(false); }}><section role="dialog" aria-modal="true" aria-label="Choose birth year" className="mb-2 w-full max-w-[414px] rounded-[28px] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl"><div className="flex items-center justify-between"><button type="button" aria-label="More recent years" disabled={!yearPage} onClick={() => setYearPage((page) => Math.max(0, page - 1))} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] disabled:opacity-25"><ChevronLeft className="h-5 w-5" /></button><h2 className="font-semibold">Birth year</h2><button type="button" aria-label="Close" onClick={() => setYearOpen(false)} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2]"><X className="h-5 w-5" /></button></div><div className="mt-5 grid grid-cols-3 gap-2">{years.map((item) => <button key={item} type="button" onClick={() => { updateForm({ birthYear: String(item) }); setYearOpen(false); }} className={`h-12 rounded-xl text-sm font-semibold ${formKid.birthYear === String(item) ? "bg-black text-white" : "bg-[#f2f2f2]"}`}>{item}</button>)}</div>{years.at(-1)! > 1920 ? <button type="button" onClick={() => setYearPage((page) => page + 1)} className="mt-3 flex h-11 w-full items-center justify-center gap-1 text-sm font-semibold text-black/50">Earlier <ChevronRight className="h-4 w-4" /></button> : null}</section></div> : null}

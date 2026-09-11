@@ -1,32 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TemplateDetail, mapPublishedTemplate, useTemplateInteractions, type Template } from "@/components/craft-app";
 import { fetchPublishedTemplates } from "@/lib/templates/client";
+import type { PublishedTemplate } from "@/lib/templates/types";
 
-export function TemplateDetailClient({ subscribed }: { subscribed: boolean }) {
-  const params = useParams<{ slug: string }>();
+export function TemplateDetailClient({ subscribed, initialTemplate }: { subscribed: boolean; initialTemplate: PublishedTemplate }) {
   const router = useRouter();
   const interactions = useTemplateInteractions();
-  const [templates, setTemplates] = useState<Template[] | null>(null);
+  const selectedTemplate = useMemo(() => mapPublishedTemplate(initialTemplate), [initialTemplate]);
+  const [templates, setTemplates] = useState<Template[] | null>([selectedTemplate]);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchPublishedTemplates(controller.signal)
-      .then((items) => setTemplates(items.map(mapPublishedTemplate)))
+      .then((items) => {
+        const mapped = items.map(mapPublishedTemplate);
+        setTemplates(mapped.some((item) => item.id === selectedTemplate.id) ? mapped : [selectedTemplate, ...mapped]);
+      })
       .catch((requestError: unknown) => {
         if ((requestError as { name?: string }).name !== "AbortError") setError(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [selectedTemplate]);
 
   if (!templates && !error) {
     return <main className="min-h-dvh bg-black" aria-label="Loading template" />;
   }
 
-  const template = templates?.find((item) => item.slug === params.slug);
+  const template = templates?.find((item) => item.id === selectedTemplate.id);
 
   if (!template) {
     return (

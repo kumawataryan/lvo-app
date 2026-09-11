@@ -45,6 +45,12 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+@media (min-width: 1033px) {
+  .mobile-nav {
+    display: none;
+  }
+}
+
 .mobile-nav button {
   pointer-events: auto;
   touch-action: manipulation;
