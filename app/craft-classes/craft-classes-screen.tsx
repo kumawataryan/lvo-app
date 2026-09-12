@@ -22,8 +22,8 @@ export function CraftClassesScreen({ classes }: { classes: CraftClassVideo[] }) 
 
   return (
     <main className="fixed inset-0 bg-[var(--background)] text-black">
-      <div className="relative mx-auto flex h-dvh w-full max-w-[430px] flex-col overflow-hidden bg-white">
-        <header className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[calc(16px+env(safe-area-inset-top))]">
+      <div className="relative mx-auto flex h-dvh w-full flex-col overflow-hidden bg-white">
+        <header className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[calc(16px+env(safe-area-inset-top))] md:px-5 lg:px-6">
           <button
             type="button"
             aria-label="Back to categories"
@@ -35,8 +35,8 @@ export function CraftClassesScreen({ classes }: { classes: CraftClassVideo[] }) 
           <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">Craft Classes</h1>
         </header>
 
-        <div className="shrink-0 px-4 pb-1 pt-2">
-          <label className="flex h-12 items-center gap-2.5 rounded-2xl bg-[#f2f2f2] px-4">
+        <div className="shrink-0 px-4 pb-1 pt-2 md:px-5 lg:px-6">
+          <label className="flex h-12 max-w-md items-center gap-2.5 rounded-2xl bg-[#f2f2f2] px-4">
             <Search className="h-4.5 w-4.5 shrink-0 text-black/40" />
             <input
               value={query}
@@ -53,23 +53,23 @@ export function CraftClassesScreen({ classes }: { classes: CraftClassVideo[] }) 
           </label>
         </div>
 
-        <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-32 pt-3">
+        <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-32 pt-3 md:px-5 lg:px-6">
           {visibleClasses.length ? (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {visibleClasses.map((video) => {
                 return (
                   <Link
                     key={video.id}
                     href={`/craft-classes/${video.id}`}
                     aria-label={`Watch ${video.title}`}
-                    className={`group relative block aspect-video rounded-[18px] bg-[#202020] text-white shadow-[0_2px_12px_rgba(0,0,0,0.08)] transition active:scale-[0.98] ${video.playlist ? "mt-2 before:absolute before:-top-2 before:left-5 before:right-5 before:h-4 before:rounded-t-[14px] before:bg-black/15 after:absolute after:-top-1 after:left-2.5 after:right-2.5 after:h-4 after:rounded-t-[16px] after:bg-black/30" : "overflow-hidden"}`}
+                    className={`group relative block aspect-video min-w-0 rounded-[18px] bg-[#202020] text-white shadow-[0_2px_12px_rgba(0,0,0,0.08)] transition active:scale-[0.98] ${video.playlist ? "mt-2 before:absolute before:-top-2 before:left-5 before:right-5 before:h-4 before:rounded-t-[14px] before:bg-black/15 after:absolute after:-top-1 after:left-2.5 after:right-2.5 after:h-4 after:rounded-t-[16px] after:bg-black/30" : "overflow-hidden"}`}
                   >
                     <span className="absolute inset-0 z-10 block overflow-hidden rounded-[18px]">
                       <Image
                         src={`https://i.ytimg.com/vi/${new URL(video.youtubeUrl).searchParams.get("v")}/hqdefault.jpg`}
                         alt={video.title}
                         fill
-                        sizes="(max-width: 430px) calc(100vw - 32px), 398px"
+                        sizes="(max-width: 430px) calc(100vw - 32px), (max-width: 1024px) 45vw, 320px"
                         className="object-cover transition duration-300 group-hover:scale-[1.02]"
                       />
                       <span className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />

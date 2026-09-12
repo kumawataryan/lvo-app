@@ -12,6 +12,7 @@ type CreateTemplateBody = {
   difficulty?: unknown;
   videoPath?: unknown;
   videoUrl?: unknown;
+  thumbnailPath?: unknown;
   printablePath?: unknown;
   isFree?: unknown;
   galleryPaths?: unknown;
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
   const difficulty = typeof body.difficulty === "string" ? body.difficulty : "";
   const videoPath = typeof body.videoPath === "string" ? body.videoPath : "";
   const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl.trim() : "";
+  const thumbnailPath = typeof body.thumbnailPath === "string" ? body.thumbnailPath : "";
   const printablePath = typeof body.printablePath === "string" ? body.printablePath : "";
   const isFree = body.isFree === true;
   const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 10) : [];
@@ -76,9 +78,10 @@ export async function POST(request: Request) {
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) return Response.json({ error: "Enter a valid duration." }, { status: 400 });
   if (!DIFFICULTIES.has(difficulty)) return Response.json({ error: "Choose a difficulty." }, { status: 400 });
   if (videoPath && videoUrl) return Response.json({ error: "Provide either a video upload or a video link, not both." }, { status: 400 });
-  if (!videoPath && !videoUrl) return Response.json({ error: "Add a template video." }, { status: 400 });
+  if (!videoPath && !videoUrl && !thumbnailPath && !galleryPaths.length) return Response.json({ error: "Add a template video or a featured image." }, { status: 400 });
   if (videoPath && !videoPath.startsWith(ownedPrefix)) return Response.json({ error: "Upload a video." }, { status: 400 });
   if (videoUrl && !parseVideoEmbedUrl(videoUrl)) return Response.json({ error: "Paste a valid YouTube Shorts link." }, { status: 400 });
+  if (thumbnailPath && !thumbnailPath.startsWith(ownedPrefix)) return Response.json({ error: "Upload a featured image." }, { status: 400 });
   if (!printablePath.startsWith(ownedPrefix)) return Response.json({ error: "Upload a printable PDF." }, { status: 400 });
   if (galleryPaths.some((path) => !path.startsWith(ownedPrefix))) return Response.json({ error: "Invalid gallery file." }, { status: 400 });
 
@@ -110,7 +113,7 @@ export async function POST(request: Request) {
       video_embed_url: videoUrl || null,
       printable_path: printablePath,
       is_free: isFree,
-      thumbnail_path: galleryPaths[0] ?? null,
+      thumbnail_path: thumbnailPath || galleryPaths[0] || null,
       status: "published",
       published_at: publishedAt,
       created_by: user.id,

@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null) as { uploadGroup?: unknown; folder?: unknown; extension?: unknown; index?: unknown } | null;
   const uploadGroup = typeof body?.uploadGroup === "string" ? body.uploadGroup : "";
-  const folder = body?.folder === "printable" || body?.folder === "gallery" ? body.folder : "";
+  const folder = body?.folder === "printable" || body?.folder === "gallery" || body?.folder === "thumbnail" ? body.folder : "";
   const extension = typeof body?.extension === "string" ? body.extension.toLowerCase() : "";
   const index = Number(body?.index);
   if (!ID_PATTERN.test(uploadGroup) || !folder || !EXTENSION_PATTERN.test(extension)) {
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid gallery position." }, { status: 400 });
   }
 
-  const filename = folder === "gallery" ? `gallery-${index + 1}.${extension}` : `printable.${extension}`;
+  const filename = folder === "gallery" ? `gallery-${index + 1}.${extension}` : folder === "thumbnail" ? `thumbnail.${extension}` : `printable.${extension}`;
   const path = `/lvo-files/${user.id}/${uploadGroup}/${filename}`;
   try {
     const { link } = await createDropboxUploadLink(path);

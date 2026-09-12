@@ -26,7 +26,7 @@ export function TagDetailScreen({ tag, publishedTemplates, subscribed, page, tot
           <p className="mt-1 text-sm text-black/40">{total} {total === 1 ? "template" : "templates"}</p>
         </section>
 
-        {templates.length ? <div className="mt-7 grid grid-cols-2 gap-2">{templates.map((template) => <TemplateCard key={template.id} template={template} onOpenDetail={() => router.push(`/t/${template.id}`)} onQuickActions={() => setQuickTemplate(template)} />)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No templates use this tag yet.</div>}
+        {templates.length ? <div className="mt-7 columns-2 gap-5">{templates.map((template) => <div key={template.id} className="mb-5 break-inside-avoid"><TemplateCard template={template} onOpenDetail={() => router.push(`/t/${template.id}`)} onQuickActions={() => setQuickTemplate(template)} /></div>)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No templates use this tag yet.</div>}
 
         {totalPages > 1 ? <nav aria-label="Tag template pages" className="mt-8 flex items-center justify-between gap-3">
           {page > 1 ? <Link href={`/tags/${tag.slug}?page=${page - 1}`} className="rounded-xl bg-[#f2f2f2] px-4 py-2.5 text-sm font-semibold">Previous</Link> : <span />}

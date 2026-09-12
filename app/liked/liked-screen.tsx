@@ -27,7 +27,7 @@ export function LikedScreen({ templates: publishedTemplates, subscribed }: { tem
           <p className="mt-1 text-sm text-black/40">{templates.length} {templates.length === 1 ? "template" : "templates"}</p>
         </section>
 
-        {templates.length ? <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 min-[1033px]:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9">{templates.map((template) => <TemplateCard key={template.id} template={template} statusIcon="like" onOpenDetail={() => router.push(`/t/${template.id}`)} onQuickActions={() => setQuickTemplate(template)} />)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No liked templates</div>}
+        {templates.length ? <div className="mt-7 columns-2 gap-5 sm:columns-3 md:gap-6 lg:columns-4 min-[1033px]:columns-6 xl:columns-7 2xl:columns-9">{templates.map((template) => <div key={template.id} className="mb-5 break-inside-avoid md:mb-6"><TemplateCard template={template} statusIcon="like" onOpenDetail={() => router.push(`/t/${template.id}`)} onQuickActions={() => setQuickTemplate(template)} /></div>)}</div> : <div className="mt-8 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">No liked templates</div>}
         </div>
       </div>
       {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} subscribed={subscribed} onClose={() => setQuickTemplate(null)} /> : null}

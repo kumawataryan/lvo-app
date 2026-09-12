@@ -4,9 +4,11 @@ import { TemplateDetailClient } from "@/app/templates/[slug]/template-detail-cli
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { hasActiveSubscription } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
-import { getPublishedTemplateById } from "@/lib/templates/repository";
+import { getPublishedTemplateById, listPublishedTemplates } from "@/lib/templates/repository";
 
 export const dynamic = "force-dynamic";
+
+const RELATED_TEMPLATE_LIMIT = 49;
 
 export default async function TemplatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,5 +22,9 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
     if (!onboarding?.completed) redirect("/onboarding");
   }
   const subscribed = user ? await hasActiveSubscription(supabase, user.id).catch(() => false) : false;
-  return <TemplateDetailClient subscribed={subscribed} initialTemplate={template} />;
+
+  const relatedResult = await listPublishedTemplates({ category: template.category.slug, limit: RELATED_TEMPLATE_LIMIT }).catch(() => []);
+  const related = relatedResult.filter((item) => item.id !== template.id);
+
+  return <TemplateDetailClient subscribed={subscribed} initialTemplate={template} initialRelated={related} />;
 }

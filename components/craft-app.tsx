@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, forwardRef, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, BookOpen, Bookmark, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, Images, LayoutGrid, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote, Ruler, Scissors, Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, Images, LayoutGrid, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote, Ruler, Scissors, Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from "@/components/ui/carousel";
@@ -39,10 +39,6 @@ export type Story = {
 
 export type TimedLyricLine = { time: number; text: string };
 type CardFeedback = { templateId: string; action: "like" | "save"; active: boolean; nonce: number };
-
-function tagSlug(tag: string) {
-  return tag.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
 
 export const demoStories: Story[] = [
   {
@@ -428,7 +424,6 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
   const pathname = usePathname();
   const [templates, setTemplates] = useState<Template[]>(() => initialTemplates.map(mapPublishedTemplate));
   const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const [detailTemplate, setDetailTemplate] = useState<Template | null>(null);
   const player = useStoryPlayer();
   const storyDetailRef = useRef<StoryDetailHandle | null>(null);
   const interactions = useTemplateInteractions();
@@ -447,22 +442,8 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
   }, [initialTemplates.length]);
 
   const openTemplate = (template: Template) => {
-    setDetailTemplate(template);
-    window.history.pushState(window.history.state, "", `/t/${template.id}`);
+    router.push(`/t/${template.id}`);
   };
-
-  const closeTemplate = () => {
-    setDetailTemplate(null);
-    if (window.location.pathname !== pathname) window.history.pushState(window.history.state, "", pathname);
-  };
-
-  useEffect(() => {
-    const handlePopState = () => {
-      if (!window.location.pathname.startsWith("/t/")) setDetailTemplate(null);
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
 
   const activeTab: Tab = pathname === "/browse" ? "browse" : pathname === "/search" ? "search" : pathname === "/profile" ? "profile" : "templates";
 
@@ -493,10 +474,6 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
           {children}
         </div>
 
-        {detailTemplate ? (
-          <TemplateDetail template={detailTemplate} templates={templates} onBack={closeTemplate} subscribed={subscribed} interactions={interactions} />
-        ) : null}
-
         {player.story && !player.minimized ? (
           <StoryDetail
             ref={storyDetailRef}
@@ -509,7 +486,7 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
           />
         ) : null}
 
-        {!detailTemplate ? <BottomNav active={player.story && !player.minimized ? "stories" : activeTab} nowPlaying={player.story ? { story: player.story, progress: player.progress, playing: player.playing, onOpen: () => {
+        <BottomNav active={player.story && !player.minimized ? "stories" : activeTab} nowPlaying={player.story ? { story: player.story, progress: player.progress, playing: player.playing, onOpen: () => {
           const story = player.story!;
           if (player.minimized) {
             player.restore();
@@ -520,7 +497,7 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
             player.minimize();
             router.push("/stories");
           }
-        }, onTogglePlaying: () => player.setPlaying(!player.playing) } : undefined} onChange={goToTab} /> : null}
+        }, onTogglePlaying: () => player.setPlaying(!player.playing) } : undefined} onChange={goToTab} />
       </main>
     </AppShellContext.Provider>
   );
@@ -604,7 +581,7 @@ export function StoriesScreen({ onOpenStory }: { onOpenStory: (story: Story) => 
   return (
     <section className="relative min-h-0 flex-1 overflow-hidden bg-white text-black">
       <div className="h-full overflow-y-auto pb-44 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="grid grid-cols-2 gap-2 px-2 pb-2 pt-5 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 px-2 pb-2 pt-5 sm:grid-cols-3 md:grid-cols-4 md:gap-3 md:px-3 lg:grid-cols-5 lg:gap-4 lg:px-4 xl:grid-cols-6 2xl:grid-cols-8">
           {demoStories.map((story) => {
             const isNowPlaying = player.story?.id === story.id;
             const fraction = isNowPlaying && story.duration > 0 ? Math.min(Math.max(player.progress / story.duration, 0), 1) : 0;
@@ -1484,18 +1461,19 @@ function TemplateFeed(props: {
 
   return (
     <div className={`relative m-0 h-full overscroll-y-contain ${horizontalPadding} pb-24 ${topPadding} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${quickTemplate ? "overflow-hidden" : "overflow-y-auto"} ${dark ? "bg-black" : "bg-white"}`}>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 min-[1033px]:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9">
+      <div className="columns-2 gap-5 sm:columns-3 md:gap-6 lg:columns-4 min-[1033px]:columns-6 xl:columns-7 2xl:columns-9">
         {templates.map((template, index) => (
-          <TemplateCard
-            key={template.id}
-            template={template}
-            eager={index < 2}
-            onOpenDetail={() => props.onOpenDetail(template)}
-            onQuickActions={openQuickActions}
-            quickActive={quickTemplate?.id === template.id}
-            feedback={cardFeedback?.templateId === template.id ? cardFeedback : null}
-            downloading={downloadingId === template.id}
-          />
+          <div key={template.id} className="mb-5 break-inside-avoid md:mb-6">
+            <TemplateCard
+              template={template}
+              eager={index < 2}
+              onOpenDetail={() => props.onOpenDetail(template)}
+              onQuickActions={openQuickActions}
+              quickActive={quickTemplate?.id === template.id}
+              feedback={cardFeedback?.templateId === template.id ? cardFeedback : null}
+              downloading={downloadingId === template.id}
+            />
+          </div>
         ))}
       </div>
       {templates.length === 0 ? <div className="flex min-h-48 items-center justify-center px-8 text-center text-sm text-black/45">No templates match your search.</div> : null}
@@ -1555,6 +1533,7 @@ export function TemplateCard({
 }) {
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressRef = useRef(false);
+  const hasVideo = Boolean(template.videoSrc) || Boolean(template.videoEmbedUrl);
 
   const clearHoldTimer = () => {
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
@@ -1563,14 +1542,11 @@ export function TemplateCard({
 
   return (
     <article
-      className={`template-card relative m-0 aspect-[9/16] w-full cursor-pointer overflow-hidden rounded-[22px] bg-[#f2eee8] p-0 transition-transform duration-200 ${quickActive ? "z-[1201] touch-none rotate-[-2deg] scale-[1.015]" : "touch-manipulation"}`}
+      className={`template-card relative m-0 w-full cursor-pointer overflow-hidden rounded-[22px] bg-[#f2eee8] p-0 transition-transform duration-200 ${hasVideo ? "aspect-[9/16]" : "ring-1 ring-black/10"} ${quickActive ? "z-[1201] touch-none rotate-[-2deg] scale-[1.015]" : "touch-manipulation"}`}
       onContextMenu={(event) => event.preventDefault()}
       onClick={onOpenDetail}
     >
       <ReelMedia template={template} eager={eager} />
-      {template.isFree ? (
-        <span className="pointer-events-none absolute left-2.5 top-2.5 z-10 rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-black shadow-[0_3px_12px_rgba(0,0,0,0.15)]">Free</span>
-      ) : null}
       {statusIcon ? (
         <span aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md">
           {statusIcon === "like" ? <Heart className="h-4 w-4" fill="currentColor" /> : <Bookmark className="h-4 w-4" fill="currentColor" />}
@@ -1616,7 +1592,7 @@ export function TemplateCard({
           const rect = event.currentTarget.getBoundingClientRect();
           onQuickActions?.(template, rect.left + rect.width / 2, rect.top + rect.height / 2);
         }}
-        className="absolute bottom-2 right-2 z-10 flex h-9 w-9 touch-none items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-xl shadow-none transition active:scale-90"
+        className="absolute bottom-2 right-2 z-10 flex h-9 w-9 touch-none items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md shadow-none transition active:scale-90"
       >
         <MoreHorizontal className="h-5 w-5" strokeWidth={2.2} />
       </button>
@@ -1739,110 +1715,162 @@ function QuickActionButton({ action, target, offset, onTarget, onClick, ariaLabe
   );
 }
 
-export function TemplateDetail({ template, templates, onBack, subscribed = false, interactions }: { template: Template; templates: Template[]; onBack: () => void; subscribed?: boolean; interactions: TemplateInteractions }) {
-  const reelRef = useRef<HTMLDivElement | null>(null);
-  const scrollFrameRef = useRef<number | null>(null);
-  const [activeTemplate, setActiveTemplate] = useState(template);
-  const [heartBurstTemplate, setHeartBurstTemplate] = useState<string | null>(null);
+const DISCOVERY_GRID_SIZE = 36;
+const DISCOVERY_PLACEHOLDER_RATIOS = ["aspect-[4/5]", "aspect-square", "aspect-[3/4]", "aspect-[5/6]"];
+
+function DiscoveryPlaceholderCard({ variant }: { variant: number }) {
+  return <div className={`w-full ${DISCOVERY_PLACEHOLDER_RATIOS[variant % DISCOVERY_PLACEHOLDER_RATIOS.length]} animate-pulse rounded-[22px] bg-[#f2f2f2]`} aria-hidden="true" />;
+}
+
+const MASONRY_BREAKPOINTS: Array<{ min: number; columns: number }> = [
+  { min: 0, columns: 2 },
+  { min: 640, columns: 3 },
+  { min: 1024, columns: 4 },
+  { min: 1033, columns: 6 },
+  { min: 1280, columns: 7 },
+  { min: 1536, columns: 9 },
+];
+const MASONRY_GAP = 20;
+
+function useMasonryColumns() {
+  const [columns, setColumns] = useState(MASONRY_BREAKPOINTS[0].columns);
+  useEffect(() => {
+    const compute = () => {
+      const width = window.innerWidth;
+      let value = MASONRY_BREAKPOINTS[0].columns;
+      for (const breakpoint of MASONRY_BREAKPOINTS) if (width >= breakpoint.min) value = breakpoint.columns;
+      setColumns(value);
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
+  return columns;
+}
+
+type MasonryTile = { key: string; span: number; render: ReactNode };
+
+// Real (JS-packed) masonry, not CSS columns: needed so the first tile can span
+// multiple columns while the rest keep flowing into whichever column is shortest,
+// Pinterest-style. CSS multi-column layout can't do a partial column span.
+function MasonryGrid({ tiles }: { tiles: MasonryTile[] }) {
+  const columns = useMasonryColumns();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const itemElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [positions, setPositions] = useState<Map<string, { x: number; y: number; width: number }>>(new Map());
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) setContainerWidth(width);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const columnWidth = columns > 0 && containerWidth > 0 ? (containerWidth - MASONRY_GAP * (columns - 1)) / columns : 0;
+
+  const recompute = useCallback(() => {
+    if (!columnWidth) return;
+    const columnHeights = new Array(columns).fill(0);
+    const next = new Map<string, { x: number; y: number; width: number }>();
+
+    for (const tile of tiles) {
+      const span = Math.max(1, Math.min(tile.span, columns));
+      const el = itemElsRef.current.get(tile.key);
+      const measuredHeight = el?.getBoundingClientRect().height || columnWidth;
+
+      let bestStart = 0;
+      let bestMax = Infinity;
+      for (let start = 0; start <= columns - span; start++) {
+        let maxInRange = 0;
+        for (let i = start; i < start + span; i++) maxInRange = Math.max(maxInRange, columnHeights[i]);
+        if (maxInRange < bestMax) { bestMax = maxInRange; bestStart = start; }
+      }
+
+      next.set(tile.key, { x: bestStart * (columnWidth + MASONRY_GAP), y: bestMax, width: span * columnWidth + (span - 1) * MASONRY_GAP });
+      const newHeight = bestMax + measuredHeight + MASONRY_GAP;
+      for (let i = bestStart; i < bestStart + span; i++) columnHeights[i] = newHeight;
+    }
+
+    setPositions(next);
+    setHeight(Math.max(0, ...columnHeights) - MASONRY_GAP);
+  }, [tiles, columns, columnWidth]);
+
+  useEffect(() => { recompute(); }, [recompute]);
+
+  useEffect(() => {
+    const observers = Array.from(itemElsRef.current.values()).map((el) => {
+      const observer = new ResizeObserver(() => recompute());
+      observer.observe(el);
+      return observer;
+    });
+    return () => observers.forEach((observer) => observer.disconnect());
+  }, [recompute]);
+
+  return (
+    <div ref={containerRef} className="relative w-full" style={{ height: height || undefined }}>
+      {tiles.map((tile) => {
+        const pos = positions.get(tile.key);
+        const span = Math.max(1, Math.min(tile.span, columns));
+        const fallbackWidth = span * columnWidth + (span - 1) * MASONRY_GAP;
+        return (
+          <div
+            key={tile.key}
+            ref={(el) => { if (el) itemElsRef.current.set(tile.key, el); else itemElsRef.current.delete(tile.key); }}
+            className="absolute left-0 top-0"
+            style={{
+              width: pos?.width ?? fallbackWidth,
+              transform: `translate(${pos?.x ?? 0}px, ${pos?.y ?? 0}px)`,
+              opacity: pos ? 1 : 0,
+              transition: "transform 200ms ease, opacity 200ms ease",
+            }}
+          >
+            {tile.render}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function TemplateDetail({ template, related, onBack, subscribed = false, interactions }: { template: Template; related: Template[]; onBack: () => void; subscribed?: boolean; interactions: TemplateInteractions }) {
+  const router = useRouter();
+  const [heartBurst, setHeartBurst] = useState(false);
   const [shareSheet, setShareSheet] = useState(false);
   const [infoPanel, setInfoPanel] = useState<"details" | "supplies" | null>(null);
   const [saveSheet, setSaveSheet] = useState(false);
   const [subscriptionPrompt, setSubscriptionPrompt] = useState(false);
-  const [showScrollHint, setShowScrollHint] = useState(false);
   const [galleryTemplate, setGalleryTemplate] = useState<Template | null>(null);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
+  const [quickTemplate, setQuickTemplate] = useState<Template | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const detailPrintContentRef = useRef<HTMLDivElement>(null);
-  const detailPrintRequestRef = useRef<Template | null>(null);
 
   const runDetailPrint = useReactToPrint({
     contentRef: detailPrintContentRef,
-    documentTitle: () => detailPrintRequestRef.current ? `${detailPrintRequestRef.current.slug}-template` : "template",
-    print: async () => {
-      if (detailPrintRequestRef.current) await printTemplate(detailPrintRequestRef.current);
-    },
-    onAfterPrint: () => {
-      setPrintingId(null);
-      detailPrintRequestRef.current = null;
-    },
-    onPrintError: () => {
-      setPrintingId(null);
-      detailPrintRequestRef.current = null;
-    },
+    documentTitle: () => `${template.slug}-template`,
+    print: async () => { await printTemplate(template); },
+    onAfterPrint: () => setPrinting(false),
+    onPrintError: () => setPrinting(false),
   });
 
-  useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const previousHtmlBackground = html.style.backgroundColor;
-    const previousHtmlOverflow = html.style.overflow;
-    const previousBodyBackground = body.style.backgroundColor;
-    const previousBodyOverflow = body.style.overflow;
-    const previousBodyOverscroll = body.style.overscrollBehavior;
-
-    html.style.backgroundColor = "#000000";
-    html.style.overflow = "hidden";
-    body.style.backgroundColor = "#000000";
-    body.style.overflow = "hidden";
-    body.style.overscrollBehavior = "none";
-
-    return () => {
-      html.style.backgroundColor = previousHtmlBackground;
-      html.style.overflow = previousHtmlOverflow;
-      body.style.backgroundColor = previousBodyBackground;
-      body.style.overflow = previousBodyOverflow;
-      body.style.overscrollBehavior = previousBodyOverscroll;
-    };
-  }, []);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      if (window.localStorage.getItem("template-scroll-tutorial-seen") !== "true") setShowScrollHint(true);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    const index = Math.max(templates.findIndex((item) => item.id === template.id), 0);
-    const reel = reelRef.current;
-    if (!reel) return;
-    reel.scrollTo({ top: index * reel.clientHeight, behavior: "instant" });
-    setActiveTemplate(template);
-  }, [template, templates]);
-
-  const handleReelScroll = () => {
-    if (showScrollHint) {
-      setShowScrollHint(false);
-      window.localStorage.setItem("template-scroll-tutorial-seen", "true");
-    }
-    if (scrollFrameRef.current !== null) return;
-    scrollFrameRef.current = window.requestAnimationFrame(() => {
-      scrollFrameRef.current = null;
-      const reel = reelRef.current;
-      if (!reel || !reel.clientHeight) return;
-      const index = Math.min(Math.max(Math.round(reel.scrollTop / reel.clientHeight), 0), templates.length - 1);
-      const nextTemplate = templates[index];
-      setActiveTemplate((current) => {
-        if (current.id === nextTemplate.id) return current;
-        window.history.replaceState(window.history.state, "", `/t/${nextTemplate.id}`);
-        triggerHaptic(7);
-        return nextTemplate;
-      });
-    });
-  };
-
-  const liked = interactions.liked.has(activeTemplate.id);
-  const saved = interactions.saved.has(activeTemplate.id);
-  const canDownload = subscribed || activeTemplate.isFree;
+  const liked = interactions.liked.has(template.id);
+  const saved = interactions.saved.has(template.id);
+  const canDownload = subscribed || template.isFree;
 
   const requestDownload = () => {
     if (!canDownload) {
       setSubscriptionPrompt(true);
       return;
     }
-    if (downloadingId) return;
-    setDownloadingId(activeTemplate.id);
-    void downloadTemplate(activeTemplate).finally(() => setDownloadingId(null));
+    if (downloading) return;
+    setDownloading(true);
+    void downloadTemplate(template).finally(() => setDownloading(false));
   };
 
   const requestPrint = () => {
@@ -1850,73 +1878,83 @@ export function TemplateDetail({ template, templates, onBack, subscribed = false
       setSubscriptionPrompt(true);
       return;
     }
-    if (printingId) return;
-    setPrintingId(activeTemplate.id);
-    detailPrintRequestRef.current = activeTemplate;
+    if (printing) return;
+    setPrinting(true);
     runDetailPrint();
   };
 
-  const handleDoubleTap = (reelTemplate: Template) => {
-    void interactions.toggleLike(reelTemplate.id);
-    setHeartBurstTemplate(reelTemplate.id);
+  const handleDoubleTap = () => {
+    void interactions.toggleLike(template.id);
+    setHeartBurst(true);
     triggerHaptic([10, 25, 14]);
-    window.setTimeout(() => {
-      setHeartBurstTemplate((current) => current === reelTemplate.id ? null : current);
-    }, 850);
+    window.setTimeout(() => setHeartBurst(false), 850);
   };
 
+  const discoverySlots: Array<Template | null> = related.length >= DISCOVERY_GRID_SIZE
+    ? related
+    : [...related, ...Array.from({ length: DISCOVERY_GRID_SIZE - related.length }, () => null)];
+
+  const heroHasVideo = Boolean(template.videoSrc) || Boolean(template.videoEmbedUrl);
+
+  const tiles: MasonryTile[] = [
+    {
+      key: template.id,
+      span: heroHasVideo ? 2 : 3,
+      render: (
+        <div className="w-full">
+          <div className="relative w-full overflow-hidden rounded-[22px] bg-black">
+            <section
+              onDoubleClick={(event) => {
+                if ((event.target as HTMLElement).closest("button, input")) return;
+                handleDoubleTap();
+              }}
+              className="relative w-full touch-manipulation select-none overflow-hidden"
+            >
+              <DetailVideoPlayer template={template} active onDownload={requestDownload} downloading={downloading} onPrint={requestPrint} printing={printing} />
+              {heartBurst ? (
+                <div className="heart-burst pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
+                  <Heart fill="currentColor" strokeWidth={1.5} />
+                </div>
+              ) : null}
+            </section>
+
+            <button type="button" aria-label="Back" onClick={onBack} className="absolute left-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] shadow-[0_2px_10px_rgba(0,0,0,0.18)] transition active:scale-95"><ArrowLeft className="h-5 w-5" /></button>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <button type="button" aria-label="Like" onClick={() => void interactions.toggleLike(template.id)} className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${liked ? "text-red-500" : "text-black/70"}`}><Heart className="h-6 w-6" fill={liked ? "currentColor" : "none"} /></button>
+            <button type="button" aria-label="Save" onClick={() => setSaveSheet(true)} className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${saved ? "text-black" : "text-black/70"}`}><Bookmark className="h-6 w-6" fill={saved ? "currentColor" : "none"} strokeWidth={1.8} /></button>
+            <button type="button" aria-label="Share" onClick={() => setShareSheet(true)} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Share2 className="h-6 w-6" strokeWidth={1.8} /></button>
+            {template.supplyItems.length ? <button type="button" aria-label="Supplies" onClick={() => setInfoPanel("supplies")} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Package className="h-6 w-6" /></button> : null}
+            {template.galleryImages.length ? <button type="button" aria-label="Open image gallery" onClick={() => setGalleryTemplate(template)} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Images className="h-6 w-6" strokeWidth={1.8} /></button> : null}
+          </div>
+        </div>
+      ),
+    },
+    ...discoverySlots.map((item, index): MasonryTile => ({
+      key: item?.id ?? `placeholder-${index}`,
+      span: 1,
+      render: item ? (
+        <TemplateCard template={item} onOpenDetail={() => router.push(`/t/${item.id}`)} onQuickActions={() => setQuickTemplate(item)} />
+      ) : (
+        <DiscoveryPlaceholderCard variant={index} />
+      ),
+    })),
+  ];
+
   return (
-    <div className="fixed inset-0 z-[2000] m-0 h-dvh w-full overflow-hidden border-0 bg-black p-0 text-white">
-    <div className="relative mx-auto h-dvh w-full max-w-[430px] overflow-hidden border-0 bg-black p-0">
-      <div ref={reelRef} onScroll={handleReelScroll} className="h-full snap-y snap-mandatory overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {templates.map((reelTemplate) => (
-          <section
-            key={reelTemplate.id}
-            onDoubleClick={(event) => {
-              if ((event.target as HTMLElement).closest("button, input")) return;
-              handleDoubleTap(reelTemplate);
-            }}
-            className="relative h-dvh snap-start snap-always touch-manipulation select-none overflow-hidden bg-[#f2eee8]"
-          >
-            <DetailVideoPlayer template={reelTemplate} active={activeTemplate.id === reelTemplate.id && !galleryTemplate} onDownload={requestDownload} downloading={downloadingId === reelTemplate.id} onPrint={requestPrint} printing={printingId === reelTemplate.id} />
-            {heartBurstTemplate === reelTemplate.id ? (
-              <div className="heart-burst pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
-                <Heart fill="currentColor" strokeWidth={1.5} />
-              </div>
-            ) : null}
-          </section>
-        ))}
+    <main className="fixed inset-0 w-screen max-w-none overflow-y-auto bg-white text-black [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="w-full px-4 pb-16 pt-4 md:px-5 lg:px-6 lg:pt-6">
+        <MasonryGrid tiles={tiles} />
       </div>
 
-      <button type="button" aria-label="Back" onClick={onBack} className="absolute left-4 top-4 z-20 flex h-12 w-12 items-center justify-center rounded-2xl bg-black/70 backdrop-blur"><ArrowLeft className="h-6 w-6" /></button>
-      {showScrollHint ? (
-        <button
-          type="button"
-          onClick={() => {
-            setShowScrollHint(false);
-            window.localStorage.setItem("template-scroll-tutorial-seen", "true");
-          }}
-          className="absolute bottom-[42%] left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]"
-        >
-          <span className="flex h-12 w-12 animate-bounce items-center justify-center rounded-full bg-black/55 backdrop-blur-md"><ArrowUp className="h-6 w-6" /></span>
-          <span className="whitespace-nowrap rounded-full bg-black/55 px-4 py-2 text-sm font-semibold backdrop-blur-md">Swipe up for next template</span>
-        </button>
-      ) : null}
-        <div className="absolute bottom-24 right-3 z-20 flex flex-col gap-2">
-          <button type="button" aria-label="Like" onClick={() => void interactions.toggleLike(activeTemplate.id)} className={`flex h-14 w-14 items-center justify-center text-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.7)] transition active:scale-90 ${liked ? "scale-105 text-red-400" : "opacity-90 hover:opacity-100"}`}><Heart className="h-7 w-7" fill={liked ? "currentColor" : "none"} /></button>
-          <button type="button" aria-label="Save" onClick={() => setSaveSheet(true)} className={`flex h-14 w-14 items-center justify-center text-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.7)] transition active:scale-90 ${saved ? "scale-105" : "opacity-90 hover:opacity-100"}`}><Bookmark className="h-7 w-7" fill={saved ? "currentColor" : "none"} strokeWidth={1.8} /></button>
-          <button type="button" aria-label="Share" onClick={() => setShareSheet(true)} className="flex h-14 w-14 items-center justify-center text-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.7)] transition active:scale-90 opacity-90 hover:opacity-100"><Share2 className="h-7 w-7" strokeWidth={1.8} /></button>
-          <button type="button" aria-label="Supplies" onClick={() => setInfoPanel("supplies")} className="flex h-14 w-14 items-center justify-center text-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.7)] transition active:scale-90 opacity-90 hover:opacity-100"><Package className="h-7 w-7" /></button>
-          {activeTemplate.galleryImages.length ? <button type="button" aria-label="Open image gallery" onClick={() => setGalleryTemplate(activeTemplate)} className="flex h-14 w-14 items-center justify-center text-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.7)] transition active:scale-90 opacity-90 hover:opacity-100"><Images className="h-7 w-7" strokeWidth={1.8} /></button> : null}
-        </div>
       {infoPanel ? (
         <Drawer open onOpenChange={(open) => { if (!open) setInfoPanel(null); }}>
           <DrawerContent>
           <DrawerTitle className="text-lg font-semibold tracking-tight">Supplies</DrawerTitle>
-          <DrawerDescription className="sr-only">Template information and materials for {activeTemplate.name}.</DrawerDescription>
+          <DrawerDescription className="sr-only">Template information and materials for {template.name}.</DrawerDescription>
           {infoPanel === "supplies" ? (
             <div className="mt-4 flex flex-wrap gap-2">
-                {activeTemplate.supplyItems.map((supply) => (
+                {template.supplyItems.map((supply) => (
                   <span key={supply.name} className="inline-flex items-center gap-2 rounded-lg bg-[#f2f2f2] px-3 py-2 text-sm font-medium text-black/70">
                     <SupplyItemIcon icon={supply.icon} />{supply.name}
                   </span>
@@ -1926,13 +1964,13 @@ export function TemplateDetail({ template, templates, onBack, subscribed = false
           </DrawerContent>
         </Drawer>
       ) : null}
-      {saveSheet ? <CollectionSheet template={activeTemplate} interactions={interactions} onClose={() => setSaveSheet(false)} /> : null}
-      {shareSheet ? <ShareSheet template={activeTemplate} onClose={() => setShareSheet(false)} /> : null}
-      {subscriptionPrompt ? <SubscriptionSheet template={activeTemplate} onClose={() => setSubscriptionPrompt(false)} /> : null}
+      {saveSheet ? <CollectionSheet template={template} interactions={interactions} onClose={() => setSaveSheet(false)} /> : null}
+      {shareSheet ? <ShareSheet template={template} onClose={() => setShareSheet(false)} /> : null}
+      {subscriptionPrompt ? <SubscriptionSheet template={template} onClose={() => setSubscriptionPrompt(false)} /> : null}
+      {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} subscribed={subscribed} onClose={() => setQuickTemplate(null)} /> : null}
       <div ref={detailPrintContentRef} className="hidden" aria-hidden="true" />
       {galleryTemplate ? <TemplateGallery template={galleryTemplate} onClose={() => setGalleryTemplate(null)} /> : null}
-    </div>
-    </div>
+    </main>
   );
 }
 
@@ -2268,7 +2306,7 @@ function ProfileScreen({ templates, interactions, subscribed = false, canAddTemp
                         className="absolute top-1 aspect-[9/16] w-14 overflow-hidden rounded-lg border-2 border-[#f2f2f2] bg-white"
                         style={{ left: (previews.length - 1 - index) * 16, zIndex: index + 1, transform: `rotate(${(index - (previews.length - 1) / 2) * 5}deg)` }}
                       >
-                        {template.galleryImages[0] ? <Image src={template.galleryImages[0]} alt="" fill sizes="56px" className="object-cover" /> : template.videoSrc ? <video src={template.videoSrc} muted playsInline preload="metadata" className="h-full w-full object-cover" /> : <span className="block h-full w-full bg-[#e8e6e1]" />}
+                        {template.thumbnailUrl ?? template.galleryImages[0] ? <Image src={(template.thumbnailUrl ?? template.galleryImages[0])!} alt="" fill sizes="56px" className="object-cover" /> : template.videoSrc ? <video src={template.videoSrc} muted playsInline preload="metadata" className="h-full w-full object-cover" /> : <span className="block h-full w-full bg-[#e8e6e1]" />}
                       </span>
                     ))}
                   </span>
@@ -2319,7 +2357,7 @@ function TemplateGallery({ template, onClose }: { template: Template; onClose: (
   }, [carouselApi]);
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center overflow-hidden bg-black">
+    <div className="fixed inset-0 z-[2000] flex items-center overflow-hidden bg-black">
       <Carousel opts={{ align: "start", loop: galleryImages.length > 1 }} setApi={setCarouselApi} className="w-full">
         <CarouselContent>
           {galleryImages.map((imageSrc, index) => (
@@ -2360,6 +2398,8 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
   const videoSrc = template.videoSrc;
   const videoEmbedUrl = template.videoEmbedUrl;
   const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
+  const hasMedia = Boolean(embed) || Boolean(videoSrc);
+  const previewImage = template.thumbnailUrl ?? template.galleryImages[0];
 
   const youtube = useYoutubePlayer(youtubeContainerRef, embed?.id ?? "", muted);
   const playing = embed ? youtube.playing : videoPlaying;
@@ -2430,6 +2470,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
   };
 
   const togglePlayback = () => {
+    if (!hasMedia) return;
     if (embed) {
       if (playing) youtube.pause();
       else youtube.play();
@@ -2442,14 +2483,14 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
   };
 
   return (
-    <div className="absolute inset-0 bg-black">
+    <div className={`relative w-full bg-black ${hasMedia ? "aspect-[9/16]" : ""}`}>
       {embed ? (
-        <div ref={youtubeContainerRef} className="h-full w-full overflow-hidden" />
-      ) : (
+        <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" />
+      ) : videoSrc ? (
         <video
           ref={videoRef}
-          className="h-full w-full object-cover"
-          src={videoSrc ?? undefined}
+          className="absolute inset-0 h-full w-full object-cover"
+          src={videoSrc}
           autoPlay={active}
           muted={muted}
           loop
@@ -2464,13 +2505,16 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
           onDurationChange={(event) => setVideoDuration(event.currentTarget.duration || 0)}
           onTimeUpdate={(event) => setVideoCurrentTime(event.currentTarget.currentTime)}
         />
-      )}
+      ) : previewImage ? (
+        <img src={previewImage} alt="" className="block h-auto w-full" />
+      ) : null}
       <div
         className="absolute inset-0"
         onPointerDown={(event) => {
           gestureStartRef.current = { x: event.clientX, y: event.clientY };
           suppressTapRef.current = false;
           clearSpeedTimer();
+          if (!hasMedia) return;
           const rect = event.currentTarget.getBoundingClientRect();
           if (event.clientX < rect.left + rect.width / 2) return;
           speedTimerRef.current = setTimeout(() => {
@@ -2510,7 +2554,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
           <FastForward className="h-5 w-5" fill="currentColor" /> 2×
         </div>
       ) : null}
-      {!playing && active ? (
+      {!playing && active && hasMedia ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur"><Play className="ml-1 h-7 w-7" fill="currentColor" /></span>
         </div>
@@ -2518,25 +2562,16 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent px-4 pb-4 pt-28">
         <p className="pr-16 text-sm font-semibold text-white">{template.name}</p>
         <p className="mt-1 max-w-[calc(100%-4rem)] text-xs leading-4 text-white/72">{template.description}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium text-white/72">
-          <span className="rounded-full bg-white/15 px-2.5 py-1 text-white backdrop-blur">{template.category}</span>
-          {template.isFree ? <span className="rounded-full bg-white px-2.5 py-1 font-semibold text-black">Free</span> : null}
-          <span>{template.time}</span><span className="h-1 w-1 rounded-full bg-white/45" /><span>{template.difficulty}</span><span className="h-1 w-1 rounded-full bg-white/45" /><span>{template.supplies}</span>
-        </div>
-        {template.tags.length ? <div className="pointer-events-auto mt-2 flex flex-wrap gap-1.5">
-          {template.tags.slice(0, 3).map((tag) => <Link key={tag} href={`/tags/${tagSlug(tag)}`} className="rounded-lg bg-black/40 px-2 py-1 text-[10px] font-medium text-white/80 backdrop-blur">#{tag}</Link>)}
-        </div> : null}
         <div className="pointer-events-auto mb-3 mt-3 flex gap-2">
-          <button type="button" onClick={onDownload} disabled={downloading} aria-busy={downloading} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98] disabled:opacity-70">
+          <button type="button" onClick={onDownload} disabled={downloading} aria-busy={downloading} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98] disabled:opacity-70">
             {downloading ? <LoaderCircle className="h-[18px] w-[18px] animate-spin" strokeWidth={2} /> : <Download className="h-[18px] w-[18px]" strokeWidth={2} />}
-            {downloading ? "Downloading…" : "Download Template"}
+            {downloading ? "Downloading…" : "Download"}
           </button>
-          <button type="button" onClick={onPrint} disabled={printing} aria-busy={printing} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98] disabled:opacity-70">
+          <button type="button" aria-label={printing ? "Opening print…" : "Print"} onClick={onPrint} disabled={printing} aria-busy={printing} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur-md transition active:scale-[0.98] disabled:opacity-70">
             {printing ? <LoaderCircle className="h-[18px] w-[18px] animate-spin" strokeWidth={2} /> : <Printer className="h-[18px] w-[18px]" strokeWidth={2} />}
-            {printing ? "Opening…" : "Print"}
           </button>
         </div>
-        <div className="pointer-events-auto flex items-center gap-3 text-xs text-white/85">
+        {hasMedia ? <div className="pointer-events-auto flex items-center gap-3 text-xs text-white/85">
           <span className="w-8 tabular-nums">{formatTime(currentTime)}</span>
           <input
             type="range"
@@ -2566,7 +2601,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
           >
             {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </button>
-        </div>
+        </div> : null}
       </div>
     </div>
   );
@@ -2580,12 +2615,13 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
   const videoSrc = template.videoSrc;
   const videoEmbedUrl = template.videoEmbedUrl;
   const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
+  const hasVideo = Boolean(embed) || Boolean(videoSrc);
   const { play: youtubePlay, pause: youtubePause, ready: youtubeReady, playing: youtubeStarted } = useYoutubePlayer(youtubeContainerRef, shouldLoad ? embed?.id ?? "" : "", true, true);
   const intersectingRef = useRef(false);
 
   useEffect(() => {
     const target = containerRef.current;
-    if (!target) return;
+    if (!target || !hasVideo) return;
 
     const observer = new IntersectionObserver(([entry]) => {
       intersectingRef.current = entry.isIntersecting;
@@ -2601,7 +2637,7 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [embed, youtubePlay, youtubePause]);
+  }, [embed, hasVideo, youtubePlay, youtubePause]);
 
   // The observer above only reports intersection changes; if the card was
   // already visible before the YouTube player finished loading, that first
@@ -2613,6 +2649,16 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
   }, [embed, youtubeReady, youtubePlay, youtubePause]);
 
   const previewImage = template.thumbnailUrl ?? template.galleryImages[0];
+
+  if (!hasVideo) {
+    return (
+      <div ref={containerRef} className="relative w-full bg-black">
+        {previewImage
+          ? <img src={previewImage} alt="" loading={eager ? "eager" : "lazy"} className="block h-auto w-full" />
+          : <div className="aspect-[9/16] w-full bg-[#f2eee8]" />}
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="relative h-full w-full bg-black">
@@ -2626,11 +2672,11 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
           /> : null}
           <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" style={{ opacity: youtubeStarted ? 1 : 0 }} />
         </>
-      ) : (
+      ) : videoSrc ? (
         <video
           ref={videoRef}
           className="absolute inset-0 h-full w-full object-cover"
-          src={shouldLoad ? videoSrc ?? undefined : undefined}
+          src={shouldLoad ? videoSrc : undefined}
           muted
           loop
           playsInline
@@ -2638,7 +2684,7 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
           disablePictureInPicture
           onCanPlay={(event) => { if (intersectingRef.current) event.currentTarget.play().catch(() => undefined); }}
         />
-      )}
+      ) : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { Check, ChevronDown, FileText, Images, Link2, LoaderCircle, Plus, Upload, X } from "lucide-react";
+import { Check, ChevronDown, FileText, Image as ImageIcon, Images, Link2, LoaderCircle, Plus, Upload, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
@@ -40,6 +40,7 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
   const [printable, setPrintable] = useState<File | null>(null);
   const [isFree, setIsFree] = useState(false);
   const [gallery, setGallery] = useState<File[]>([]);
+  const [featuredImage, setFeaturedImage] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -66,8 +67,20 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
     setGallery(files);
   };
 
+  const selectFeaturedImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (file && file.size > 15 * 1024 * 1024) {
+      setError("Featured image must be smaller than 15 MB.");
+      event.target.value = "";
+      return;
+    }
+    setError("");
+    setFeaturedImage(file);
+  };
+
   const videoLinkEmbed = parseVideoEmbedUrl(videoUrl);
   const videoReady = Boolean(videoLinkEmbed);
+  const mediaReady = videoReady || Boolean(featuredImage);
   const ageRangeValid = Number.isInteger(Number(minimumAge))
     && Number.isInteger(Number(maximumAge))
     && Number(minimumAge) >= 0
@@ -93,7 +106,7 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!videoReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid) return;
+    if (!mediaReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid) return;
 
     setSubmitting(true);
     setError("");
@@ -101,7 +114,7 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
     const uploadGroup = crypto.randomUUID();
     const uploaded: UploadRecord[] = [];
 
-    const upload = async (folder: "printable" | "gallery", file: File, index?: number) => {
+    const upload = async (folder: "printable" | "gallery" | "thumbnail", file: File, index?: number) => {
       const linkResponse = await fetch("/api/dropbox/upload-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -122,9 +135,10 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
     };
 
     try {
-      const [printablePath, galleryPaths] = await Promise.all([
+      const [printablePath, galleryPaths, thumbnailPath] = await Promise.all([
         upload("printable", printable),
         Promise.all(gallery.map((file, index) => upload("gallery", file, index))),
+        featuredImage ? upload("thumbnail", featuredImage) : Promise.resolve(""),
       ]);
 
       setStatus("Publishing template…");
@@ -140,6 +154,7 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
           durationMinutes: Number(duration),
           difficulty,
           videoUrl: videoUrl.trim(),
+          thumbnailPath,
           printablePath,
           isFree,
           galleryPaths,
@@ -175,14 +190,13 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
         <p className="text-2xl font-semibold tracking-tight">New template</p>
 
         <div className="mt-7 space-y-5">
-          <Field label="Video">
+          <Field label="Video" optional={Boolean(featuredImage)}>
             <div className="flex gap-3">
               <div className="min-w-0 flex-1">
                 <div className="relative">
                   <Link2 aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" strokeWidth={2.25} />
                   <input
                     type="url"
-                    required
                     value={videoUrl}
                     onChange={(event) => { setVideoUrl(event.target.value); setError(""); }}
                     placeholder="YouTube Shorts link"
@@ -190,7 +204,11 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
                   />
                 </div>
                 <p className="mt-1.5 text-xs text-black/35">
-                  {videoUrl && !videoLinkEmbed ? "Paste a valid YouTube Shorts link." : "youtube.com/shorts/… or youtu.be/…"}
+                  {videoUrl && !videoLinkEmbed
+                    ? "Paste a valid YouTube Shorts link."
+                    : featuredImage
+                      ? "Optional · youtube.com/shorts/… or youtu.be/…"
+                      : "youtube.com/shorts/… or youtu.be/… — or add a featured image below"}
                 </p>
               </div>
               {videoLinkEmbed ? (
@@ -330,6 +348,18 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
                 onChange={selectPrintable}
               />
               <FilePicker
+                icon={<ImageIcon className="h-5 w-5" />}
+                title={featuredImage?.name ?? "Featured image"}
+                detail={featuredImage
+                  ? `${formatFileSize(featuredImage.size)} · Ready to upload`
+                  : videoReady
+                    ? "Optional · shown while the video loads · JPG, PNG or WebP · up to 15 MB"
+                    : "Required without a video · shown on the template card · JPG, PNG or WebP · up to 15 MB"}
+                selected={Boolean(featuredImage)}
+                accept="image/jpeg,image/png,image/webp"
+                onChange={selectFeaturedImage}
+              />
+              <FilePicker
                 multiple
                 icon={<Images className="h-5 w-5" />}
                 title={gallery.length ? `${gallery.length} gallery image${gallery.length === 1 ? "" : "s"}` : "Gallery images"}
@@ -348,7 +378,7 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
 
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-        <button type="submit" disabled={submitting || !videoReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
+        <button type="submit" disabled={submitting || !mediaReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
           {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : <><Plus className="h-4 w-4" />Publish template</>}
         </button>
       </form>
