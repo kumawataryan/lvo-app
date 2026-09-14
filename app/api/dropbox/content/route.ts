@@ -22,7 +22,9 @@ export async function GET(request: Request) {
   return new Response(dropboxResponse.body, {
     headers: {
       "Content-Type": IMAGE_CONTENT_TYPES[extension] ?? dropboxResponse.headers.get("content-type") ?? "application/octet-stream",
-      "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+      // Uploaded template paths contain immutable UUIDs, so browsers, the Next.js
+      // image optimizer, and the CDN can safely retain them without re-fetching Dropbox.
+      "Cache-Control": "public, max-age=31536000, s-maxage=31536000, immutable",
     },
   });
 }

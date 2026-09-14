@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import { ArrowRight, Eye, EyeOff, LoaderCircle, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -59,23 +60,6 @@ export default function LoginPage() {
     setPassword("");
   };
 
-  const sendPasswordReset = async () => {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) {
-      setMessage("Enter your email above first, then tap \"Forgot password?\".");
-      return;
-    }
-
-    setLoading(true);
-    setMessage(null);
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset-password`,
-    });
-    setLoading(false);
-    setMessage(error ? error.message : "Check your email for a link to set a new password.");
-  };
-
   const signInWithGoogle = async () => {
     setLoading(true);
     setMessage(null);
@@ -103,7 +87,13 @@ export default function LoginPage() {
 
           <h1 className="mt-6 text-3xl font-semibold tracking-tight">{mode === "signin" ? "Welcome back" : "Create your account"}</h1>
 
-          <form onSubmit={submit} className="mt-6 space-y-3">
+          <button type="button" disabled={loading} onClick={signInWithGoogle} className="mt-6 flex h-13 w-full items-center justify-center gap-3 rounded-xl bg-[#f2f2f2] text-sm font-semibold transition hover:bg-[#e9e9e9] active:scale-[0.99] disabled:opacity-50">
+            <GoogleIcon /> Continue with Google
+          </button>
+
+          <div className="my-5 flex items-center gap-3 text-xs text-black/35"><span className="h-px flex-1 bg-black/8" /><span>or continue with email</span><span className="h-px flex-1 bg-black/8" /></div>
+
+          <form onSubmit={submit} className="space-y-3">
             <label htmlFor="login-email" className="sr-only">Email address</label>
             <input id="login-email" type="email" inputMode="email" autoComplete="email" required autoFocus value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" className="h-13 w-full rounded-xl bg-[#f2f2f2] px-4 text-base outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
 
@@ -122,9 +112,7 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
-              <button type="button" disabled={loading} onClick={sendPasswordReset} className="mt-2 block text-xs font-medium text-black/45 disabled:opacity-40">
-                Forgot password?
-              </button>
+              {mode === "signin" ? <div className="mt-2 text-right"><Link href="/forgot-password" className="text-xs font-semibold text-black/50 transition hover:text-black">Forgot password?</Link></div> : null}
             </div>
 
             <button type="submit" disabled={loading || !email.trim() || !password} className="flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
@@ -139,12 +127,6 @@ export default function LoginPage() {
           >
             {mode === "signin" ? "Don't have an account? " : "Already have an account? "}
             <span className="font-semibold text-black">{mode === "signin" ? "Sign up" : "Sign in"}</span>
-          </button>
-
-          <div className="my-5 flex items-center gap-3 text-xs text-black/35"><span className="h-px flex-1 bg-black/8" /><span>or</span><span className="h-px flex-1 bg-black/8" /></div>
-
-          <button type="button" disabled={loading} onClick={signInWithGoogle} className="flex h-13 w-full items-center justify-center gap-3 rounded-xl border border-black/10 bg-white text-sm font-semibold transition active:scale-[0.99] disabled:opacity-50">
-            <GoogleIcon /> Continue with Google
           </button>
 
           {message ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p> : null}

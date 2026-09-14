@@ -10,10 +10,10 @@ import { loadRazorpayCheckout, type RazorpaySuccessResponse } from "@/lib/razorp
 import { GATEWAYS, PLAN_DETAILS, PLAN_ORDER, RAZORPAY_PLAN_DETAILS, faviconUrl, type Gateway, type PlanId } from "@/lib/payments/plans";
 
 const benefits = [
-  "Unlimited downloads",
-  "Easy step-by-step crafts",
-  "New activities regularly",
-  "High-quality template files",
+  "Unlimited printable downloads",
+  "Easy step-by-step craft guides",
+  "Fresh activities added regularly",
+  "High-quality, print-ready files",
 ];
 
 function planDisplay(planId: PlanId, gateway: Gateway | null) {
@@ -179,34 +179,20 @@ export function SubscriptionScreen() {
   };
 
   return (
-    <main className="fixed inset-0 h-[100dvh] w-screen max-w-none overflow-y-auto overscroll-contain bg-white text-black">
-      <div className="min-h-full w-screen max-w-none bg-white">
-      <div className="px-4 pt-4 md:px-6 md:pt-6 lg:px-8">
-        <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] text-black transition active:scale-95">
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-      <div className="mx-auto w-full max-w-none min-[1033px]:max-w-2xl">
-        <div className="px-4 md:px-6 lg:px-8">
-          <section className="relative aspect-video w-full overflow-hidden rounded-[28px] bg-black [clip-path:inset(0_round_28px)]">
-            <video
-              className="h-full w-full cursor-pointer rounded-[28px] object-cover [clip-path:inset(0_round_28px)]"
-              src="/name-template-mobile.mp4"
-              autoPlay
-              loop
-              playsInline
-              preload="metadata"
-              disablePictureInPicture
-              onPointerUp={(event) => {
-                event.currentTarget.muted = false;
-                event.currentTarget.play().catch(() => undefined);
-              }}
-            />
-          </section>
+    <main className="fixed inset-0 h-[100dvh] w-screen overflow-y-auto overscroll-contain bg-white text-black">
+      <div className="min-h-full w-full bg-white">
+        <div className="px-4 pt-4 md:px-6 md:pt-6 lg:px-8">
+          <button type="button" aria-label="Close" onClick={() => { if (window.history.length > 1) router.back(); else router.push("/"); }} className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] text-black transition active:scale-95">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <section className="bg-white px-5 pb-6 pt-5 md:px-6 lg:px-8">
-          <div className="grid w-full grid-cols-1 gap-2.5">
+        <div className="mx-auto w-full max-w-none min-[1033px]:max-w-2xl">
+        <section className="px-5 pb-6 pt-3 md:px-6 lg:px-8">
+          <h1 className="text-3xl font-semibold tracking-tight">Unlimited creativity</h1>
+          <p className="mt-2 text-sm leading-5 text-black/50">Easy, ready-to-print crafts for creative little hands.</p>
+
+          <div className="mt-6 grid w-full grid-cols-1 gap-2.5">
             {benefits.map((benefit) => (
               <div key={benefit} className="flex items-center gap-3 text-sm font-medium text-black/72">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black text-white"><Check className="h-3.5 w-3.5" strokeWidth={2.5} /></span>
@@ -215,7 +201,8 @@ export function SubscriptionScreen() {
             ))}
           </div>
 
-          <div className="mt-7 grid grid-cols-3 gap-2.5">
+          <p className="mb-2 mt-7 text-xs font-semibold text-black/45">Choose a plan</p>
+          <div className="grid grid-cols-3 gap-2.5">
             {PLAN_ORDER.map((planId) => {
               const plan = planDisplay(planId, selectedGateway);
               const isSelected = planId === selectedPlan;
@@ -265,39 +252,36 @@ export function SubscriptionScreen() {
                     setSelectedGateway(gateway.id);
                     setErrorMessage(null);
                   }}
-                  className={`flex flex-col items-center gap-1.5 rounded-2xl border-[3px] py-3 transition active:scale-[0.97] ${
+                  className={`flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl border-[3px] px-2 py-3 transition active:scale-[0.97] ${
                     isSelected ? "border-black bg-black/3" : "border-black/20 bg-white"
                   }`}
                 >
-                  <Image src={faviconUrl(gateway.iconDomain)} alt="" width={20} height={20} className="h-5 w-5 rounded" unoptimized />
+                  <Image src={faviconUrl(gateway.iconDomain)} alt="" width={32} height={32} className="h-8 w-8 rounded-lg" unoptimized />
                   <span className="text-[11px] font-semibold">{gateway.label}</span>
                 </button>
               );
             })}
           </div>
 
-        </section>
-
-        <section className="bg-white px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 md:px-6 lg:px-8">
-          {errorMessage ? <p className="mb-2 text-center text-xs font-medium text-red-600">{errorMessage}</p> : null}
+          {errorMessage ? <p role="alert" className="mt-4 text-center text-xs font-medium text-red-600">{errorMessage}</p> : null}
 
           <button
             type="button"
             onClick={startCheckout}
             disabled={isProcessing || !selectedGateway}
-            className="flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-black text-base font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition active:scale-[0.99] disabled:opacity-40"
+            className="mt-8 flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-black text-base font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.16)] transition active:scale-[0.99] disabled:opacity-40"
           >
             {isProcessing ? <LoaderCircle className="h-5 w-5 animate-spin" /> : null}
             {isProcessing ? "Processing…" : "Continue"}
           </button>
 
-          <p className="mx-auto mt-3 max-w-xs text-center text-[9px] leading-snug text-black/25">
+          <p className="mx-auto mt-6 max-w-xs text-center text-[9px] leading-snug text-black/25">
             Monthly and yearly plans auto-renew until canceled; manage or cancel anytime in your account settings. All purchases, including the one-time Lifetime plan, are final and non-refundable. By continuing, you agree to our{" "}
             <Link href="/terms" className="underline underline-offset-2">Terms</Link> and{" "}
             <Link href="/privacy" className="underline underline-offset-2">Privacy Policy</Link>.
           </p>
         </section>
-      </div>
+        </div>
       </div>
     </main>
   );

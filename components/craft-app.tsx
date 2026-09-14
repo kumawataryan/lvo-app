@@ -1466,7 +1466,7 @@ function TemplateFeed(props: {
           <div key={template.id} className="mb-5 break-inside-avoid md:mb-6">
             <TemplateCard
               template={template}
-              eager={index < 2}
+              eager={index < 9}
               onOpenDetail={() => props.onOpenDetail(template)}
               onQuickActions={openQuickActions}
               quickActive={quickTemplate?.id === template.id}
@@ -2654,7 +2654,15 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
     return (
       <div ref={containerRef} className="relative w-full bg-black">
         {previewImage
-          ? <img src={previewImage} alt="" loading={eager ? "eager" : "lazy"} className="block h-auto w-full" />
+          ? <Image
+              src={previewImage}
+              alt=""
+              width={900}
+              height={1200}
+              sizes="(max-width: 639px) 50vw, (max-width: 767px) 33vw, (max-width: 1023px) 25vw, (max-width: 1279px) 17vw, 12vw"
+              loading={eager ? "eager" : "lazy"}
+              className="block h-auto w-full"
+            />
           : <div className="aspect-[9/16] w-full bg-[#f2eee8]" />}
       </div>
     );
@@ -2662,7 +2670,7 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
 
   return (
     <div ref={containerRef} className="relative h-full w-full bg-black">
-      {previewImage ? <Image src={previewImage} alt="" fill sizes="(max-width: 430px) 50vw, 215px" priority={eager} className="object-cover" /> : null}
+      {previewImage ? <Image src={previewImage} alt="" fill sizes="(max-width: 639px) 50vw, (max-width: 767px) 33vw, (max-width: 1023px) 25vw, (max-width: 1279px) 17vw, 12vw" loading={eager ? "eager" : "lazy"} className="object-cover" /> : null}
       {embed ? (
         <>
           {shouldLoad ? <img

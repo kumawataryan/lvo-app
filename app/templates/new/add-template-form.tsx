@@ -8,6 +8,7 @@ import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { TemplateTopBar, tabRoute } from "@/components/craft-app";
+import { ImportTemplatesPanel } from "./import-templates-panel";
 
 type Category = { id: string; name: string; parentId: string | null };
 type UploadRecord = { path: string };
@@ -24,6 +25,7 @@ function formatFileSize(bytes: number) {
 
 export function AddTemplateForm({ categories, subscribed = false }: { categories: Category[]; subscribed?: boolean }) {
   const router = useRouter();
+  const [mode, setMode] = useState<"single" | "import">("single");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
@@ -186,9 +188,16 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
     <main className="flex h-dvh flex-col overflow-hidden bg-white text-black">
       <TemplateTopBar canAddTemplates={false} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} alwaysShowNav />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-      <form onSubmit={submit} className="mx-auto flex w-full max-w-3xl flex-col px-5 pb-[calc(24px+env(safe-area-inset-bottom))] pt-2">
+      <div className="mx-auto flex w-full max-w-3xl flex-col px-5 pb-[calc(24px+env(safe-area-inset-bottom))] pt-2">
         <p className="text-2xl font-semibold tracking-tight">New template</p>
 
+        <div className="mt-4 inline-flex w-fit gap-1 rounded-xl bg-[#f2f2f2] p-1">
+          <button type="button" onClick={() => setMode("single")} className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${mode === "single" ? "bg-white shadow-sm" : "text-black/50"}`}>Add one</button>
+          <button type="button" onClick={() => setMode("import")} className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${mode === "import" ? "bg-white shadow-sm" : "text-black/50"}`}>Import CSV</button>
+        </div>
+
+        {mode === "import" ? <ImportTemplatesPanel categories={categories} /> : (
+        <form onSubmit={submit} className="contents">
         <div className="mt-7 space-y-5">
           <Field label="Video" optional={Boolean(featuredImage)}>
             <div className="flex gap-3">
@@ -381,7 +390,9 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
         <button type="submit" disabled={submitting || !mediaReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
           {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : <><Plus className="h-4 w-4" />Publish template</>}
         </button>
-      </form>
+        </form>
+        )}
+      </div>
       </div>
       <Drawer open={categoryPickerOpen} onOpenChange={setCategoryPickerOpen}>
         <DrawerContent>

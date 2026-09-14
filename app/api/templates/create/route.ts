@@ -18,6 +18,7 @@ type CreateTemplateBody = {
   galleryPaths?: unknown;
   supplies?: unknown;
   tags?: unknown;
+  status?: unknown;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
   const thumbnailPath = typeof body.thumbnailPath === "string" ? body.thumbnailPath : "";
   const printablePath = typeof body.printablePath === "string" ? body.printablePath : "";
   const isFree = body.isFree === true;
+  const status = body.status === "draft" ? "draft" : "published";
   const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 10) : [];
   const supplies = Array.isArray(body.supplies)
     ? [...new Set(body.supplies.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 20)
@@ -96,7 +98,7 @@ export async function POST(request: Request) {
 
   const templateId = crypto.randomUUID();
   let slug = slugify(title) || `template-${templateId.slice(0, 8)}`;
-  const publishedAt = new Date().toISOString();
+  const publishedAt = status === "published" ? new Date().toISOString() : null;
   let insertError: { code?: string; message: string } | null = null;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -114,7 +116,7 @@ export async function POST(request: Request) {
       printable_path: printablePath,
       is_free: isFree,
       thumbnail_path: thumbnailPath || galleryPaths[0] || null,
-      status: "published",
+      status,
       published_at: publishedAt,
       created_by: user.id,
     });
@@ -187,5 +189,5 @@ export async function POST(request: Request) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not save template details." }, { status: 400 });
   }
 
-  return Response.json({ id: templateId, slug }, { status: 201 });
+  return Response.json({ id: templateId, slug, status }, { status: 201 });
 }
