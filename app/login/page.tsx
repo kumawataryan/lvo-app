@@ -83,7 +83,7 @@ export default function LoginPage() {
 
         <div className="relative mx-auto flex w-full max-w-xl flex-1 flex-col">
         <div className="my-auto py-10">
-          <Image src="/lvo.jpg" alt="LVO Crafts" width={56} height={56} priority className="h-14 w-14 rounded-2xl object-cover" />
+          <Image src="/lvo.jpg" alt="Lovely Vibes Only" width={56} height={56} priority className="h-14 w-14 rounded-2xl object-cover" />
 
           <h1 className="mt-6 text-3xl font-semibold tracking-tight">{mode === "signin" ? "Welcome back" : "Create your account"}</h1>
 
@@ -132,7 +132,11 @@ export default function LoginPage() {
           {message ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p> : null}
         </div>
 
-        <p className="text-center text-[11px] leading-5 text-black/35">By continuing, you agree to the Terms and Privacy Policy.</p>
+        <p className="text-center text-[11px] leading-5 text-black/35">
+          By continuing, you agree to the{" "}
+          <Link href="/terms-and-conditions" className="underline underline-offset-2">Terms</Link> and{" "}
+          <Link href="/privacy-policy" className="underline underline-offset-2">Privacy Policy</Link>.
+        </p>
         </div>
       </div>
     </main>

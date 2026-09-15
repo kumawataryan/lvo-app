@@ -277,8 +277,8 @@ export function SubscriptionScreen() {
 
           <p className="mx-auto mt-6 max-w-xs text-center text-[9px] leading-snug text-black/25">
             Monthly and yearly plans auto-renew until canceled; manage or cancel anytime in your account settings. All purchases, including the one-time Lifetime plan, are final and non-refundable. By continuing, you agree to our{" "}
-            <Link href="/terms" className="underline underline-offset-2">Terms</Link> and{" "}
-            <Link href="/privacy" className="underline underline-offset-2">Privacy Policy</Link>.
+            <Link href="/terms-and-conditions" className="underline underline-offset-2">Terms</Link> and{" "}
+            <Link href="/privacy-policy" className="underline underline-offset-2">Privacy Policy</Link>.
           </p>
         </section>
         </div>

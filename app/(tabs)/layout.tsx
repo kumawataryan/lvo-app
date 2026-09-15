@@ -33,12 +33,12 @@ export default async function TabsLayout({ children }: { children: ReactNode }) 
   const subscribed = Boolean(purchase);
 
   let parentName = "";
-  let profileKids: Array<{ id: string; name: string; birthYear: number; avatar: string }> = [];
+  let profileKids: Array<{ id: string; name: string; birthYear: number; avatar: string; gender: string | null }> = [];
   if (user) {
     const onboarding = await getFamilyOnboarding(supabase, user.id).catch(() => null);
     if (!onboarding?.completed) redirect("/onboarding");
     parentName = onboarding.parentName;
-    profileKids = onboarding.kids.map(({ id, name, birthYear, avatar }) => ({ id, name, birthYear, avatar }));
+    profileKids = onboarding.kids.map(({ id, name, birthYear, avatar, gender }) => ({ id, name, birthYear, avatar, gender }));
   }
 
   return (

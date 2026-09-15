@@ -7,6 +7,7 @@ export type FamilyKid = {
   name: string;
   birthYear: number;
   avatar: string;
+  gender: string | null;
   sortOrder: number;
 };
 
@@ -19,7 +20,7 @@ export type FamilyOnboarding = {
 export async function getFamilyOnboarding(supabase: SupabaseClient, userId: string): Promise<FamilyOnboarding> {
   const [profileResult, kidsResult] = await Promise.all([
     supabase.from("user_profiles").select("parent_name, onboarding_completed_at").eq("user_id", userId).maybeSingle(),
-    supabase.from("kids").select("id, name, birth_year, avatar, sort_order").eq("user_id", userId).order("sort_order"),
+    supabase.from("kids").select("id, name, birth_year, avatar, gender, sort_order").eq("user_id", userId).order("sort_order"),
   ]);
 
   if (profileResult.error) throw profileResult.error;
@@ -33,6 +34,7 @@ export async function getFamilyOnboarding(supabase: SupabaseClient, userId: stri
       name: kid.name,
       birthYear: kid.birth_year,
       avatar: kid.avatar,
+      gender: kid.gender ?? null,
       sortOrder: kid.sort_order,
     })),
   };

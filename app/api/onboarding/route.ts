@@ -1,6 +1,8 @@
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 
-type KidInput = { name?: unknown; birthYear?: unknown; avatar?: unknown };
+type KidInput = { name?: unknown; birthYear?: unknown; avatar?: unknown; gender?: unknown };
+
+const VALID_GENDERS = ["boy", "girl"];
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseAuthServerClient();
@@ -24,6 +26,7 @@ export async function POST(request: Request) {
     name: typeof kid.name === "string" ? kid.name.trim() : "",
     birthYear: Number(kid.birthYear),
     avatar: typeof kid.avatar === "string" ? kid.avatar : "",
+    gender: typeof kid.gender === "string" && VALID_GENDERS.includes(kid.gender) ? kid.gender : null,
     sortOrder: index + 1,
   }));
   if (kids.some((kid) => !kid.name || kid.name.length > 40 || !Number.isInteger(kid.birthYear) || kid.birthYear < 1920 || kid.birthYear > currentYear)) {
@@ -41,7 +44,7 @@ export async function POST(request: Request) {
 
   const { data: savedKids, error: reloadError } = await supabase
     .from("kids")
-    .select("id, name, birth_year, avatar")
+    .select("id, name, birth_year, avatar, gender")
     .eq("user_id", user.id)
     .order("sort_order", { ascending: true });
 
@@ -57,6 +60,7 @@ export async function POST(request: Request) {
       name: kid.name,
       birthYear: String(kid.birth_year),
       avatar: kid.avatar,
+      gender: kid.gender,
     })),
   });
 }

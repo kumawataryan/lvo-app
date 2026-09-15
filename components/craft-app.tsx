@@ -98,7 +98,7 @@ export type SubscriptionSummary = {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
 };
-export type ProfileKidSummary = { id: string; name: string; birthYear: number; avatar: string };
+export type ProfileKidSummary = { id: string; name: string; birthYear: number; avatar: string; gender: string | null };
 
 function triggerHaptic(pattern: number | number[] = 10) {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
@@ -401,7 +401,7 @@ type AppShellContextValue = {
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
 
-function useAppShell() {
+export function useAppShell() {
   const context = useContext(AppShellContext);
   if (!context) throw new Error("useAppShell must be used within AppShell");
   return context;
@@ -822,7 +822,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
             }}
             className="transition active:scale-95"
           >
-            <Image src="/lvo.jpg" alt="LVO Crafts logo" width={56} height={56} className={`h-14 w-14 rounded-2xl border-2 object-cover ${dark ? "border-white" : "border-black"}`} priority />
+            <Image src="/lvo.jpg" alt="Lovely Vibes Only logo" width={56} height={56} className={`h-14 w-14 rounded-2xl border-2 object-cover ${dark ? "border-white" : "border-black"}`} priority />
           </Link>
           {canAddTemplates ? (
             <button
@@ -1112,7 +1112,7 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
               }}
               className="transition active:scale-95"
             >
-              <Image src="/lvo.jpg" alt="LVO Crafts logo" width={56} height={56} className="h-14 w-14 rounded-2xl border-2 border-black object-cover" priority />
+              <Image src="/lvo.jpg" alt="Lovely Vibes Only logo" width={56} height={56} className="h-14 w-14 rounded-2xl border-2 border-black object-cover" priority />
             </Link>
             {canAddTemplates ? (
               <button
@@ -1981,7 +1981,7 @@ function SupplyItemIcon({ icon }: { icon: string | null }) {
 
 function ShareSheet({ template, onClose }: { template: Template; onClose: () => void }) {
   const url = typeof window === "undefined" ? `/t/${template.id}` : window.location.href;
-  const title = `Make ${template.name} with LVO Crafts.`;
+  const title = `Make ${template.name} with Lovely Vibes Only.`;
 
   const shareToInstagram = async () => {
     if (navigator.share) {

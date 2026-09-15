@@ -2,19 +2,20 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, LoaderCircle, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, LoaderCircle, Mars, Plus, Trash2, Venus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { FamilyOnboarding } from "@/lib/onboarding/server";
 
 const AVATARS = ["fox", "bear", "bunny", "lion", "panda", "frog", "koala", "cat", "dog", "owl", "unicorn", "dino"].map((id, index) => ({ id, src: `/avatars/avatar_${String(index + 1).padStart(2, "0")}.png` }));
-type Kid = { id?: string; name: string; birthYear: string; avatar: string };
+type Kid = { id?: string; name: string; birthYear: string; avatar: string; gender: string | null };
 type Screen = "parent" | "onboarding" | "list" | "edit";
-const freshKid = (index: number): Kid => ({ name: "", birthYear: "", avatar: AVATARS[index % AVATARS.length].id });
+const GENDERS = [{ id: "boy", label: "Boy", icon: Mars }, { id: "girl", label: "Girl", icon: Venus }];
+const freshKid = (index: number): Kid => ({ name: "", birthYear: "", avatar: AVATARS[index % AVATARS.length].id, gender: "boy" });
 const avatarFor = (id: string) => AVATARS.find((avatar) => avatar.id === id) ?? AVATARS[0];
 
 export function OnboardingFlow({ initialFamily }: { initialFamily: FamilyOnboarding }) {
   const router = useRouter();
-  const initialKids = initialFamily.kids.map((kid) => ({ id: kid.id, name: kid.name, birthYear: String(kid.birthYear), avatar: kid.avatar }));
+  const initialKids = initialFamily.kids.map((kid) => ({ id: kid.id, name: kid.name, birthYear: String(kid.birthYear), avatar: kid.avatar, gender: kid.gender }));
   const [screen, setScreen] = useState<Screen>(initialFamily.completed ? "list" : "parent");
   const [parentName, setParentName] = useState(initialFamily.parentName);
   const [kids, setKids] = useState<Kid[]>(initialKids);
@@ -91,7 +92,7 @@ export function OnboardingFlow({ initialFamily }: { initialFamily: FamilyOnboard
     <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
       <div className="flex min-h-dvh w-full flex-col bg-white px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
         <header className="flex h-11 items-center justify-between">
-          {screen === "parent" ? <Image src="/lvo.jpg" alt="LVO Crafts" width={44} height={44} priority className="h-11 w-11 rounded-xl object-cover" /> : <button type="button" aria-label="Go back" disabled={saving} onClick={back} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] active:scale-95"><ArrowLeft className="h-5 w-5" /></button>}
+          {screen === "parent" ? <Image src="/lvo.jpg" alt="Lovely Vibes Only" width={44} height={44} priority className="h-11 w-11 rounded-xl object-cover" /> : <button type="button" aria-label="Go back" disabled={saving} onClick={back} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] active:scale-95"><ArrowLeft className="h-5 w-5" /></button>}
           {onboarding ? <div className="flex gap-1" aria-label={`Step ${screen === "parent" ? 1 : 2} of 2`}><span className="h-1 w-5 rounded-full bg-black" /><span className={`h-1 w-5 rounded-full ${screen === "onboarding" ? "bg-black" : "bg-black/12"}`} /></div> : null}
         </header>
 
@@ -115,7 +116,7 @@ export function OnboardingFlow({ initialFamily }: { initialFamily: FamilyOnboard
           <h1 className="text-3xl font-semibold tracking-tight">{screen === "onboarding" ? "Add your child" : editIndex === null ? "Add child" : `Edit ${formKid.name || "child"}`}</h1>
           <div className="mt-8">
             <div className="-mx-5 overflow-x-auto pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"><div className="ml-5 flex w-max gap-3">{AVATARS.map((item, index) => { const selected = formKid.avatar === item.id; return <button key={item.id} type="button" aria-label={`Avatar ${index + 1}`} aria-pressed={selected} onClick={() => updateForm({ avatar: item.id })} className={`relative h-[72px] w-[72px] shrink-0 rounded-full bg-[#f2f2f2] active:scale-90 ${selected ? "ring-2 ring-black ring-offset-2" : ""}`}><Image src={item.src} alt="" width={72} height={72} className="h-full w-full rounded-full object-cover" />{selected ? <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-black text-white"><Check className="h-2.5 w-2.5" strokeWidth={3} /></span> : null}</button>; })}</div></div>
-            <div className="mt-7 space-y-3"><input aria-label="Child name" autoFocus maxLength={40} value={formKid.name} onChange={(e) => updateForm({ name: e.target.value })} placeholder="Name" className="h-14 w-full rounded-xl bg-[#f2f2f2] px-4 outline-none ring-black/10 placeholder:text-black/35 focus:ring-2" /><button type="button" onClick={openYears} className={`flex h-14 w-full items-center justify-between rounded-xl bg-[#f2f2f2] px-4 text-left ${formKid.birthYear ? "text-black" : "text-black/35"}`}><span>Birth year</span><span className="font-semibold text-black">{formKid.birthYear || "Choose"}</span></button></div>
+            <div className="mt-7 space-y-3"><input aria-label="Child name" autoFocus maxLength={40} value={formKid.name} onChange={(e) => updateForm({ name: e.target.value })} placeholder="Name" className="h-14 w-full rounded-xl bg-[#f2f2f2] px-4 outline-none ring-black/10 placeholder:text-black/35 focus:ring-2" /><button type="button" onClick={openYears} className={`flex h-14 w-full items-center justify-between rounded-xl bg-[#f2f2f2] px-4 text-left ${formKid.birthYear ? "text-black" : "text-black/35"}`}><span>Birth year</span><span className="font-semibold text-black">{formKid.birthYear || "Choose"}</span></button><div className="flex h-14 w-full items-center gap-1 rounded-xl bg-[#f2f2f2] p-1" role="group" aria-label="Gender (optional)">{GENDERS.map((option) => { const selected = formKid.gender === option.id; const Icon = option.icon; return <button key={option.id} type="button" aria-pressed={selected} onClick={() => updateForm({ gender: selected ? null : option.id })} className={`flex h-full flex-1 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold transition-colors ${selected ? "bg-black text-white" : "text-black/40"}`}><Icon className="h-4 w-4" strokeWidth={2.25} />{option.label}</button>; })}</div></div>
           </div>
           {error ? <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
           <div className="mt-auto pt-8">
