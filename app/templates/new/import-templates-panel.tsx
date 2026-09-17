@@ -5,6 +5,8 @@ import { AlertCircle, CheckCircle2, CloudUpload, Download, FileSpreadsheet, Fold
 
 import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { csvToRecords, splitList, type CsvRecord } from "@/lib/templates/csv";
+import { optimizeImageToWebp } from "@/lib/templates/image-optimize";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Category = { id: string; name: string; parentId: string | null };
 type RowStatus = "pending" | "uploading" | "done" | "error";
@@ -34,6 +36,8 @@ const DIFFICULTIES = new Set(["easy", "medium", "advanced"]);
 const CSV_TEMPLATE = `title,description,categories,minimumAge,maximumAge,durationMinutes,difficulty,isFree,videoUrl,featuredImage,galleryImages,printable,supplies,tags
 Paper Flower Bouquet,A calm paper flower activity with clear steps.,Paper;DIY,4,8,15,easy,true,https://youtube.com/shorts/xxxxxxxxxxx,flower-cover.jpg,flower-1.jpg;flower-2.jpg,flower-printable.pdf,"Paper,Scissors,Glue",flowers;paper craft
 `;
+
+const PRINTABLE_EXTENSIONS = ["pdf", "zip", "jpg", "jpeg", "png", "webp"];
 
 function fileExtension(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -111,11 +115,11 @@ function resolveRow(index: number, raw: CsvRecord, categories: Category[], fileM
   const printableName = (raw.printable ?? "").trim();
   let printableFile: File | null = null;
   if (!printableName) {
-    errors.push("A printable PDF filename is required.");
+    errors.push("A printable filename is required.");
   } else {
     printableFile = fileMap.get(basename(printableName).toLowerCase()) ?? null;
     if (!printableFile) errors.push(`Printable "${printableName}" was not found in the selected folder.`);
-    else if (fileExtension(printableFile) !== "pdf") errors.push(`Printable "${printableName}" must be a PDF file.`);
+    else if (!PRINTABLE_EXTENSIONS.includes(fileExtension(printableFile))) errors.push(`Printable "${printableName}" must be a PDF, ZIP, JPG, PNG, or WebP file.`);
   }
 
   if (!videoUrl && !featuredImageFile && !galleryFiles.length) {
@@ -132,11 +136,11 @@ function resolveRow(index: number, raw: CsvRecord, categories: Category[], fileM
   };
 }
 
-async function uploadFile(uploadGroup: string, folder: "printable" | "gallery" | "thumbnail", file: File, index?: number) {
+async function uploadToDropbox(uploadGroup: string, file: File) {
   const linkResponse = await fetch("/api/dropbox/upload-link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uploadGroup, folder, extension: fileExtension(file), index }),
+    body: JSON.stringify({ uploadGroup, folder: "printable", extension: fileExtension(file) }),
   });
   const linkResult = await linkResponse.json() as { path?: string; uploadUrl?: string; error?: string };
   if (!linkResponse.ok || !linkResult.path || !linkResult.uploadUrl) throw new Error(linkResult.error || "Could not prepare file upload.");
@@ -145,21 +149,37 @@ async function uploadFile(uploadGroup: string, folder: "printable" | "gallery" |
   return linkResult.path;
 }
 
+async function uploadToSupabase(uploadGroup: string, folder: "gallery" | "thumbnail", file: File, index?: number) {
+  const optimizedFile = await optimizeImageToWebp(file);
+  const linkResponse = await fetch("/api/templates/media-upload-link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uploadGroup, folder, extension: fileExtension(optimizedFile), name: optimizedFile.name, index }),
+  });
+  const linkResult = await linkResponse.json() as { path?: string; token?: string; error?: string };
+  if (!linkResponse.ok || !linkResult.path || !linkResult.token) throw new Error(linkResult.error || "Could not prepare file upload.");
+  const supabase = createSupabaseBrowserClient();
+  const { error: uploadError } = await supabase.storage.from("template-media").uploadToSignedUrl(linkResult.path, linkResult.token, optimizedFile);
+  if (uploadError) throw new Error(uploadError.message || "Supabase upload failed.");
+  return linkResult.path;
+}
+
 async function importRow(row: ResolvedRow): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const uploadGroup = crypto.randomUUID();
-  const uploadedPaths: string[] = [];
+  const uploadedToDropbox: string[] = [];
+  const uploadedToSupabase: string[] = [];
   try {
-    const printablePath = await uploadFile(uploadGroup, "printable", row.printableFile!);
-    uploadedPaths.push(printablePath);
+    const printablePath = await uploadToDropbox(uploadGroup, row.printableFile!);
+    uploadedToDropbox.push(printablePath);
 
-    const thumbnailPath = row.featuredImageFile ? await uploadFile(uploadGroup, "thumbnail", row.featuredImageFile) : "";
-    if (thumbnailPath) uploadedPaths.push(thumbnailPath);
+    const thumbnailPath = row.featuredImageFile ? await uploadToSupabase(uploadGroup, "thumbnail", row.featuredImageFile) : "";
+    if (thumbnailPath) uploadedToSupabase.push(thumbnailPath);
 
     const galleryPaths: string[] = [];
     for (let i = 0; i < row.galleryFiles.length; i += 1) {
-      const path = await uploadFile(uploadGroup, "gallery", row.galleryFiles[i], i);
+      const path = await uploadToSupabase(uploadGroup, "gallery", row.galleryFiles[i], i);
       galleryPaths.push(path);
-      uploadedPaths.push(path);
+      uploadedToSupabase.push(path);
     }
 
     const response = await fetch("/api/templates/create", {
@@ -187,11 +207,18 @@ async function importRow(row: ResolvedRow): Promise<{ ok: true; id: string } | {
     if (!response.ok || !result.id) throw new Error(result.error || "Could not create this template.");
     return { ok: true, id: result.id };
   } catch (error) {
-    if (uploadedPaths.length) {
+    if (uploadedToDropbox.length) {
       await fetch("/api/dropbox/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths: uploadedPaths }),
+        body: JSON.stringify({ paths: uploadedToDropbox }),
+      }).catch(() => undefined);
+    }
+    if (uploadedToSupabase.length) {
+      await fetch("/api/templates/media-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: uploadedToSupabase }),
       }).catch(() => undefined);
     }
     return { ok: false, error: error instanceof Error ? error.message : "Import failed." };

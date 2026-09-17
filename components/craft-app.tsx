@@ -131,7 +131,7 @@ async function downloadTemplate(template: Template) {
     const objectUrl = URL.createObjectURL(file);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = `${template.slug}-template.pdf`;
+    link.download = typeof linkData.filename === "string" ? linkData.filename : `${template.slug}-template.pdf`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -166,6 +166,7 @@ async function printTemplate(template: Template) {
     const file = await loadPrintableTemplate(template);
     if (!file) return;
 
+    const isImage = file.type.startsWith("image/");
     const objectUrl = URL.createObjectURL(file);
     const frame = document.createElement("iframe");
     frame.title = `Print ${template.name}`;
@@ -175,11 +176,10 @@ async function printTemplate(template: Template) {
     frame.style.right = "0";
     frame.style.bottom = "0";
     frame.style.opacity = "0";
-    frame.src = objectUrl;
     document.body.appendChild(frame);
 
     await new Promise<void>((resolve, reject) => {
-      frame.onload = () => {
+      const triggerPrint = () => {
         try {
           frame.contentWindow?.focus();
           frame.contentWindow?.print();
@@ -188,7 +188,35 @@ async function printTemplate(template: Template) {
           reject(error);
         }
       };
-      frame.onerror = () => reject(new Error("The printable file could not be rendered."));
+
+      if (isImage) {
+        // A bare image loaded via `iframe.src` falls back to the browser's default
+        // image-viewer document, which fits/zooms the image against the iframe's own
+        // (intentionally 1px) on-screen viewport rather than the printed page size,
+        // producing a badly scaled printout. An explicit page-fit stylesheet fixes it.
+        const doc = frame.contentDocument;
+        if (!doc) {
+          reject(new Error("The printable file could not be rendered."));
+          return;
+        }
+        doc.open();
+        doc.write("<!DOCTYPE html><html><head><style>@page{margin:0}html,body{margin:0;padding:0;width:100%;height:100%}</style></head><body></body></html>");
+        doc.close();
+        const img = doc.createElement("img");
+        img.alt = "";
+        img.style.display = "block";
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.objectFit = "contain";
+        img.onload = triggerPrint;
+        img.onerror = () => reject(new Error("The printable file could not be rendered."));
+        img.src = objectUrl;
+        doc.body.appendChild(img);
+      } else {
+        frame.onload = triggerPrint;
+        frame.onerror = () => reject(new Error("The printable file could not be rendered."));
+        frame.src = objectUrl;
+      }
     });
 
     window.setTimeout(() => {
@@ -217,6 +245,7 @@ export type Template = {
   supplyItems: Array<{ name: string; icon: string | null }>;
   tags: string[];
   hasPrintable: boolean;
+  canPrint: boolean;
   isFree: boolean;
   minimumAge: number | null;
   maximumAge: number | null;
@@ -243,6 +272,7 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     supplyItems: template.supplies.map((supply) => ({ name: supply.name, icon: supply.icon })),
     tags: template.tags ?? [],
     hasPrintable: template.hasPrintable,
+    canPrint: template.hasPrintable && !template.printableIsZip,
     isFree: template.isFree,
     minimumAge: template.minimumAge,
     maximumAge: template.maximumAge,
@@ -1365,7 +1395,8 @@ function TemplateFeed(props: {
   }, [quickTemplate]);
 
   const actionAtPoint = (x: number, y: number) => {
-    const actions = Object.entries(actionOffsets) as Array<[QuickAction, { x: number; y: number }]>;
+    const actions = (Object.entries(actionOffsets) as Array<[QuickAction, { x: number; y: number }]>)
+      .filter(([action]) => action !== "print" || quickTemplate?.canPrint);
     const nearest = actions.reduce<{ action: QuickAction | null; distance: number }>((current, [action, offset]) => {
       const distance = Math.hypot(x - (quickOrigin.x + offset.x), y - (quickOrigin.y + offset.y));
       return distance < current.distance ? { action, distance } : current;
@@ -1398,7 +1429,7 @@ function TemplateFeed(props: {
       showCardFeedback(selectedTemplate.id, "like", willBeLiked);
       void props.interactions.toggleLike(selectedTemplate.id);
     }
-    if (action === "print") {
+    if (action === "print" && selectedTemplate.canPrint) {
       if (props.subscribed || selectedTemplate.isFree) {
         setPrintingId(selectedTemplate.id);
         printRequestRef.current = selectedTemplate;
@@ -1488,7 +1519,7 @@ function TemplateFeed(props: {
             <QuickActionButton action="like" target={quickActionTarget} offset={actionOffsets.like} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("like")} ariaLabel="Like template" active={props.interactions.liked.has(quickTemplate.id)}><Heart className="h-6 w-6" fill={props.interactions.liked.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
             <QuickActionButton action="save" target={quickActionTarget} offset={actionOffsets.save} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("save")} ariaLabel="Save template" active={props.interactions.saved.has(quickTemplate.id)}><Bookmark className="h-6 w-6" fill={props.interactions.saved.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
             <QuickActionButton action="download" target={quickActionTarget} offset={actionOffsets.download} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("download")} ariaLabel="Download printable template">{downloadingId === quickTemplate.id ? <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.8} /> : <Download className="h-6 w-6" strokeWidth={1.8} />}</QuickActionButton>
-            <QuickActionButton action="print" target={quickActionTarget} offset={actionOffsets.print} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("print")} ariaLabel="Print template">{printingId === quickTemplate.id ? <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.8} /> : <Printer className="h-6 w-6" strokeWidth={1.8} />}</QuickActionButton>
+            {quickTemplate.canPrint ? <QuickActionButton action="print" target={quickActionTarget} offset={actionOffsets.print} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("print")} ariaLabel="Print template">{printingId === quickTemplate.id ? <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.8} /> : <Printer className="h-6 w-6" strokeWidth={1.8} />}</QuickActionButton> : null}
             <QuickActionButton action="share" target={quickActionTarget} offset={actionOffsets.share} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("share")} ariaLabel="Share template"><Share2 className="h-6 w-6" strokeWidth={1.8} /></QuickActionButton>
             {quickActionTarget ? (
               <div
@@ -1894,12 +1925,10 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
     ? related
     : [...related, ...Array.from({ length: DISCOVERY_GRID_SIZE - related.length }, () => null)];
 
-  const heroHasVideo = Boolean(template.videoSrc) || Boolean(template.videoEmbedUrl);
-
   const tiles: MasonryTile[] = [
     {
       key: template.id,
-      span: heroHasVideo ? 2 : 3,
+      span: 2,
       render: (
         <div className="w-full">
           <div className="relative w-full overflow-hidden rounded-[22px] bg-black">
@@ -2274,6 +2303,13 @@ function ProfileScreen({ templates, interactions, subscribed = false, canAddTemp
           <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Manage kids</span><span className="mt-1 block truncate text-xs text-black/45">{profileKids.length ? profileKids.map((kid) => kid.name).join(", ") : "No kids added"}</span></span>
           <ChevronRight className="h-4 w-4 shrink-0 text-black/30" />
         </button>
+        {canAddTemplates ? (
+          <button type="button" onClick={() => router.push("/templates/manage")} className="flex w-full items-center gap-3 rounded-2xl bg-[#f2f2f2] p-4 text-left transition active:scale-[0.98]">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white"><LayoutGrid className="h-5 w-5" /></span>
+            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Manage templates</span><span className="mt-1 block truncate text-xs text-black/45">Edit templates you&apos;ve added</span></span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-black/30" />
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-5">
@@ -2344,6 +2380,7 @@ function TemplateGallery({ template, onClose }: { template: Template; onClose: (
   const galleryImages = template.galleryImages;
   const [activeImage, setActiveImage] = useState(0);
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
+  const multiple = galleryImages.length > 1;
 
   useEffect(() => {
     if (!carouselApi) return;
@@ -2356,29 +2393,83 @@ function TemplateGallery({ template, onClose }: { template: Template; onClose: (
     };
   }, [carouselApi]);
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlBackground = html.style.backgroundColor;
+    const previousBodyBackground = body.style.backgroundColor;
+    const previousBodyOverscroll = body.style.overscrollBehavior;
+
+    html.style.backgroundColor = "#000000";
+    body.style.backgroundColor = "#000000";
+    body.style.overscrollBehavior = "none";
+
+    return () => {
+      html.style.backgroundColor = previousHtmlBackground;
+      body.style.backgroundColor = previousBodyBackground;
+      body.style.overscrollBehavior = previousBodyOverscroll;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      else if (event.key === "ArrowLeft") carouselApi?.scrollPrev();
+      else if (event.key === "ArrowRight") carouselApi?.scrollNext();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [carouselApi, onClose]);
+
+  const closeOnBackdrop = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-[2000] flex items-center overflow-hidden bg-black">
-      <Carousel opts={{ align: "start", loop: galleryImages.length > 1 }} setApi={setCarouselApi} className="w-full">
-        <CarouselContent>
+    <div role="dialog" aria-modal="true" aria-label={`${template.name} gallery`} className="fixed inset-0 z-[2000] flex flex-col bg-black">
+      <div className="flex shrink-0 items-center justify-between px-4 pt-[calc(1rem+env(safe-area-inset-top))]">
+        <span aria-live="polite" className="flex h-9 min-w-12 items-center justify-center rounded-full bg-white/10 px-3 text-center text-xs font-semibold tabular-nums text-white backdrop-blur-md">
+          {activeImage + 1}/{galleryImages.length}
+        </span>
+        <button type="button" aria-label="Close gallery" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition active:scale-90"><X className="h-5 w-5" /></button>
+      </div>
+
+      <div onClick={closeOnBackdrop} className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 items-center px-3 py-2">
+        <Carousel opts={{ align: "start", loop: multiple }} setApi={setCarouselApi} className="w-full">
+          <CarouselContent>
+            {galleryImages.map((imageSrc, index) => (
+              <CarouselItem key={`${imageSrc}-${index}`}>
+                <div className="relative h-[58dvh] w-full sm:h-[68dvh]">
+                  <Image src={imageSrc} alt={template.galleryAltText[index] || `${template.name} image ${index + 1}`} fill sizes="(min-width: 640px) 768px, 100vw" className="object-contain" priority={index === 0} />
+                </div>
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+          {multiple ? (
+            <>
+              <CarouselPrevious className="absolute left-1 top-1/2 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition active:scale-90 disabled:opacity-30 sm:flex" />
+              <CarouselNext className="absolute right-1 top-1/2 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-md transition active:scale-90 disabled:opacity-30 sm:flex" />
+            </>
+          ) : null}
+        </Carousel>
+      </div>
+
+      {multiple ? (
+        <div className="flex shrink-0 justify-center gap-2 overflow-x-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {galleryImages.map((imageSrc, index) => (
-            <CarouselItem key={`${imageSrc}-${index}`}>
-              <div className="relative aspect-[9/16] w-full overflow-hidden bg-[#f2f2f2]">
-                <Image src={imageSrc} alt={template.galleryAltText[index] || `${template.name} image ${index + 1}`} fill sizes="100vw" className="object-cover" priority={index === 0} />
-              </div>
-            </CarouselItem>
+            <button
+              key={`${imageSrc}-thumb-${index}`}
+              type="button"
+              aria-label={`Go to image ${index + 1}`}
+              aria-current={index === activeImage}
+              onClick={() => carouselApi?.scrollTo(index)}
+              className={`relative h-13 w-13 shrink-0 overflow-hidden rounded-lg transition ${index === activeImage ? "opacity-100 ring-2 ring-white" : "opacity-45 active:opacity-75"}`}
+            >
+              <Image src={imageSrc} alt="" fill sizes="52px" className="object-cover" />
+            </button>
           ))}
-        </CarouselContent>
-        {galleryImages.length > 1 ? (
-          <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2">
-            <CarouselPrevious className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black shadow-[0_4px_18px_rgba(0,0,0,0.22)] transition active:scale-90 disabled:opacity-30" />
-            <span aria-label={`Image ${activeImage + 1} of ${galleryImages.length}`} aria-live="polite" className="flex h-10 min-w-14 items-center justify-center rounded-full bg-white px-3 text-center text-[11px] font-semibold tabular-nums text-black shadow-[0_4px_18px_rgba(0,0,0,0.22)]">
-              {activeImage + 1}/{galleryImages.length}
-            </span>
-            <CarouselNext className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black shadow-[0_4px_18px_rgba(0,0,0,0.22)] transition active:scale-90 disabled:opacity-30" />
-          </div>
-        ) : null}
-      </Carousel>
-      <button type="button" aria-label="Close gallery" onClick={onClose} className="absolute right-4 top-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-black/70 text-white backdrop-blur"><X className="h-6 w-6" /></button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2400,6 +2491,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
   const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
   const hasMedia = Boolean(embed) || Boolean(videoSrc);
   const previewImage = template.thumbnailUrl ?? template.galleryImages[0];
+  const showsVisual = hasMedia || Boolean(previewImage);
 
   const youtube = useYoutubePlayer(youtubeContainerRef, embed?.id ?? "", muted);
   const playing = embed ? youtube.playing : videoPlaying;
@@ -2483,7 +2575,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
   };
 
   return (
-    <div className={`relative w-full bg-black ${hasMedia ? "aspect-[9/16]" : ""}`}>
+    <div className={`relative w-full bg-black ${showsVisual ? "aspect-[9/16]" : ""}`}>
       {embed ? (
         <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" />
       ) : videoSrc ? (
@@ -2506,7 +2598,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
           onTimeUpdate={(event) => setVideoCurrentTime(event.currentTarget.currentTime)}
         />
       ) : previewImage ? (
-        <img src={previewImage} alt="" className="block h-auto w-full" />
+        <Image src={previewImage} alt="" fill sizes="(min-width: 1024px) 600px, 100vw" className="object-cover" priority />
       ) : null}
       <div
         className="absolute inset-0"
@@ -2567,9 +2659,11 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
             {downloading ? <LoaderCircle className="h-[18px] w-[18px] animate-spin" strokeWidth={2} /> : <Download className="h-[18px] w-[18px]" strokeWidth={2} />}
             {downloading ? "Downloading…" : "Download"}
           </button>
-          <button type="button" aria-label={printing ? "Opening print…" : "Print"} onClick={onPrint} disabled={printing} aria-busy={printing} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur-md transition active:scale-[0.98] disabled:opacity-70">
-            {printing ? <LoaderCircle className="h-[18px] w-[18px] animate-spin" strokeWidth={2} /> : <Printer className="h-[18px] w-[18px]" strokeWidth={2} />}
-          </button>
+          {template.canPrint ? (
+            <button type="button" aria-label={printing ? "Opening print…" : "Print"} onClick={onPrint} disabled={printing} aria-busy={printing} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur-md transition active:scale-[0.98] disabled:opacity-70">
+              {printing ? <LoaderCircle className="h-[18px] w-[18px] animate-spin" strokeWidth={2} /> : <Printer className="h-[18px] w-[18px]" strokeWidth={2} />}
+            </button>
+          ) : null}
         </div>
         {hasMedia ? <div className="pointer-events-auto flex items-center gap-3 text-xs text-white/85">
           <span className="w-8 tabular-nums">{formatTime(currentTime)}</span>

@@ -27,10 +27,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     if (!subscribed) return Response.json({ error: "Subscribe to download printables." }, { status: 403 });
   }
 
+  const extension = template.printable_path.split(".").pop()?.toLowerCase() || "pdf";
+  const filename = `${slug}-template.${extension}`;
+
   if (template.printable_path.startsWith("/lvo-files/")) {
     try {
       const { link } = await getDropboxTemporaryLink(template.printable_path);
-      return Response.json({ url: link });
+      return Response.json({ url: link, filename });
     } catch (dropboxError) {
       console.error("Failed to create Dropbox printable link", dropboxError);
       return Response.json({ error: "Unable to generate download link." }, { status: 500 });
@@ -47,5 +50,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     return Response.json({ error: "Unable to generate download link." }, { status: 500 });
   }
 
-  return Response.json({ url: signed.signedUrl });
+  return Response.json({ url: signed.signedUrl, filename });
 }

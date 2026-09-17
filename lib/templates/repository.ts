@@ -94,7 +94,7 @@ const legacyTemplateSelectionWithoutAge = `${templateBaseFields}
   ${templateRelations}
 `;
 
-function publicMediaUrl(path: string | null) {
+export function publicMediaUrl(path: string | null) {
   if (!path) return null;
   if (path.startsWith("/lvo-files/")) return `/api/dropbox/content?path=${encodeURIComponent(path)}`;
   const supabase = createSupabaseServerClient();
@@ -119,6 +119,7 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     videoEmbedUrl: row.video_embed_url,
     thumbnailUrl: publicMediaUrl(row.thumbnail_path),
     hasPrintable: Boolean(row.printable_path),
+    printableIsZip: (row.printable_path?.split(".").pop()?.toLowerCase() ?? "") === "zip",
     isFree: row.is_free,
     isFeatured: row.is_featured,
     sortOrder: row.sort_order,

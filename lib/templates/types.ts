@@ -51,6 +51,7 @@ export type PublishedTemplate = {
   videoEmbedUrl: string | null;
   thumbnailUrl: string | null;
   hasPrintable: boolean;
+  printableIsZip: boolean;
   isFree: boolean;
   isFeatured: boolean;
   sortOrder: number;

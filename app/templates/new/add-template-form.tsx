@@ -1,17 +1,41 @@
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { Check, ChevronDown, FileText, Image as ImageIcon, Images, Link2, LoaderCircle, Plus, Upload, X } from "lucide-react";
+import { Check, ChevronDown, FileText, Link2, LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { optimizeImageToWebp } from "@/lib/templates/image-optimize";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { TemplateTopBar, tabRoute } from "@/components/craft-app";
 import { ImportTemplatesPanel } from "./import-templates-panel";
+import { ImageReorderField, type TemplateImage } from "./image-reorder-field";
 
 type Category = { id: string; name: string; parentId: string | null };
 type UploadRecord = { path: string };
+
+export type InitialTemplateData = {
+  id: string;
+  title: string;
+  description: string;
+  categoryIds: string[];
+  minimumAge: number;
+  maximumAge: number;
+  durationMinutes: number;
+  difficulty: string;
+  videoUrl: string;
+  isFree: boolean;
+  supplies: string[];
+  tags: string[];
+  printablePath: string;
+  images: Array<{ path: string; url: string }>;
+};
+
+const MAX_IMAGES = 10;
+const PRINTABLE_EXTENSIONS = ["pdf", "zip", "jpg", "jpeg", "png", "webp"];
+const PRINTABLE_ACCEPT = "application/pdf,application/zip,application/x-zip-compressed,image/jpeg,image/png,image/webp";
 
 function fileExtension(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -23,32 +47,47 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function AddTemplateForm({ categories, subscribed = false }: { categories: Category[]; subscribed?: boolean }) {
+function filenameFromPath(path: string) {
+  return path.split("/").pop() || path;
+}
+
+export function AddTemplateForm({ categories, subscribed = false, initialData }: { categories: Category[]; subscribed?: boolean; initialData?: InitialTemplateData }) {
   const router = useRouter();
+  const editing = Boolean(initialData);
   const [mode, setMode] = useState<"single" | "import">("single");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [title, setTitle] = useState(initialData?.title ?? "");
+  const [description, setDescription] = useState(initialData?.description ?? "");
+  const [categoryIds, setCategoryIds] = useState<string[]>(initialData?.categoryIds ?? []);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [openCategoryId, setOpenCategoryId] = useState(categories.find((category) => !category.parentId)?.id ?? "");
-  const [minimumAge, setMinimumAge] = useState("4");
-  const [maximumAge, setMaximumAge] = useState("8");
-  const [duration, setDuration] = useState("15");
-  const [difficulty, setDifficulty] = useState("easy");
-  const [supplies, setSupplies] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
+  const [minimumAge, setMinimumAge] = useState(String(initialData?.minimumAge ?? 4));
+  const [maximumAge, setMaximumAge] = useState(String(initialData?.maximumAge ?? 8));
+  const [duration, setDuration] = useState(String(initialData?.durationMinutes ?? 15));
+  const [difficulty, setDifficulty] = useState(initialData?.difficulty ?? "easy");
+  const [supplies, setSupplies] = useState(initialData?.supplies.join(", ") ?? "");
+  const [tags, setTags] = useState<string[]>(initialData?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
-  const [videoUrl, setVideoUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState(initialData?.videoUrl ?? "");
   const [printable, setPrintable] = useState<File | null>(null);
-  const [isFree, setIsFree] = useState(false);
-  const [gallery, setGallery] = useState<File[]>([]);
-  const [featuredImage, setFeaturedImage] = useState<File | null>(null);
+  const [existingPrintablePath] = useState(initialData?.printablePath ?? "");
+  const [isFree, setIsFree] = useState(initialData?.isFree ?? false);
+  const [images, setImages] = useState<TemplateImage[]>(
+    () => initialData?.images.map((image) => ({ id: crypto.randomUUID(), kind: "existing" as const, path: image.path, url: image.url })) ?? [],
+  );
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const selectPrintable = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
+    if (file && !PRINTABLE_EXTENSIONS.includes(fileExtension(file))) {
+      setError("Printable must be a PDF, ZIP, JPG, PNG, or WebP file.");
+      event.target.value = "";
+      return;
+    }
     if (file && file.size > 25 * 1024 * 1024) {
       setError("Printable must be smaller than 25 MB.");
       event.target.value = "";
@@ -58,31 +97,9 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
     setPrintable(file);
   };
 
-  const selectGallery = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []).slice(0, 10);
-    if (files.some((file) => file.size > 15 * 1024 * 1024)) {
-      setError("Each gallery image must be smaller than 15 MB.");
-      event.target.value = "";
-      return;
-    }
-    setError("");
-    setGallery(files);
-  };
-
-  const selectFeaturedImage = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    if (file && file.size > 15 * 1024 * 1024) {
-      setError("Featured image must be smaller than 15 MB.");
-      event.target.value = "";
-      return;
-    }
-    setError("");
-    setFeaturedImage(file);
-  };
-
   const videoLinkEmbed = parseVideoEmbedUrl(videoUrl);
   const videoReady = Boolean(videoLinkEmbed);
-  const mediaReady = videoReady || Boolean(featuredImage);
+  const mediaReady = videoReady || Boolean(images.length);
   const ageRangeValid = Number.isInteger(Number(minimumAge))
     && Number.isInteger(Number(maximumAge))
     && Number(minimumAge) >= 0
@@ -106,21 +123,24 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
     setTagInput("");
   };
 
+  const hasPrintable = Boolean(printable) || Boolean(existingPrintablePath);
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!mediaReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid) return;
+    if (!mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid) return;
 
     setSubmitting(true);
     setError("");
-    setStatus("Uploading files…");
+    setStatus(editing ? "Saving changes…" : "Uploading files…");
     const uploadGroup = crypto.randomUUID();
-    const uploaded: UploadRecord[] = [];
+    const uploadedToDropbox: UploadRecord[] = [];
+    const uploadedToSupabase: UploadRecord[] = [];
 
-    const upload = async (folder: "printable" | "gallery" | "thumbnail", file: File, index?: number) => {
+    const uploadToDropbox = async (file: File) => {
       const linkResponse = await fetch("/api/dropbox/upload-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uploadGroup, folder, extension: fileExtension(file), index }),
+        body: JSON.stringify({ uploadGroup, folder: "printable", extension: fileExtension(file) }),
       });
       const linkResult = await linkResponse.json() as { path?: string; uploadUrl?: string; error?: string };
       if (!linkResponse.ok || !linkResult.path || !linkResult.uploadUrl) throw new Error(linkResult.error || "Could not prepare file upload.");
@@ -132,20 +152,40 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
       });
       if (!uploadResponse.ok) throw new Error(`Dropbox upload failed (${uploadResponse.status}).`);
       const path = linkResult.path;
-      uploaded.push({ path });
+      uploadedToDropbox.push({ path });
+      return path;
+    };
+
+    const uploadToSupabase = async (folder: "gallery" | "thumbnail", file: File, index?: number) => {
+      const optimizedFile = await optimizeImageToWebp(file);
+      const linkResponse = await fetch("/api/templates/media-upload-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadGroup, folder, extension: fileExtension(optimizedFile), name: optimizedFile.name, index }),
+      });
+      const linkResult = await linkResponse.json() as { path?: string; token?: string; error?: string };
+      if (!linkResponse.ok || !linkResult.path || !linkResult.token) throw new Error(linkResult.error || "Could not prepare file upload.");
+
+      const supabase = createSupabaseBrowserClient();
+      const { error: uploadError } = await supabase.storage.from("template-media").uploadToSignedUrl(linkResult.path, linkResult.token, optimizedFile);
+      if (uploadError) throw new Error(uploadError.message || "Supabase upload failed.");
+      const path = linkResult.path;
+      uploadedToSupabase.push({ path });
       return path;
     };
 
     try {
-      const [printablePath, galleryPaths, thumbnailPath] = await Promise.all([
-        upload("printable", printable),
-        Promise.all(gallery.map((file, index) => upload("gallery", file, index))),
-        featuredImage ? upload("thumbnail", featuredImage) : Promise.resolve(""),
+      const [printablePath, mediaPaths] = await Promise.all([
+        printable ? uploadToDropbox(printable) : Promise.resolve(existingPrintablePath),
+        Promise.all(images.map((image, index) => (image.kind === "new"
+          ? uploadToSupabase(index === 0 ? "thumbnail" : "gallery", image.file, index === 0 ? undefined : index - 1)
+          : Promise.resolve(image.path)))),
       ]);
+      const [thumbnailPath = "", ...galleryPaths] = mediaPaths;
 
-      setStatus("Publishing template…");
-      const response = await fetch("/api/templates/create", {
-        method: "POST",
+      setStatus(editing ? "Saving…" : "Publishing template…");
+      const response = await fetch(editing ? `/api/templates/mine/${initialData!.id}` : "/api/templates/create", {
+        method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
@@ -165,17 +205,41 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
         }),
       });
       const result = await response.json() as { id?: string; error?: string };
-      if (!response.ok || !result.id) throw new Error(result.error || "Could not publish this template.");
+      if (!response.ok || !result.id) throw new Error(result.error || (editing ? "Could not save changes." : "Could not publish this template."));
 
-      setStatus("Published");
-      router.replace(`/t/${result.id}`);
+      if (editing && initialData) {
+        const keptImagePaths = new Set(images.filter((image) => image.kind === "existing").map((image) => image.path));
+        const removedImagePaths = initialData.images.map((image) => image.path).filter((path) => !keptImagePaths.has(path));
+        if (printable && existingPrintablePath) removedImagePaths.push(existingPrintablePath);
+
+        const staleDropboxPaths = removedImagePaths.filter((path) => path.startsWith("/lvo-files/"));
+        const staleSupabasePaths = removedImagePaths.filter((path) => !path.startsWith("/lvo-files/"));
+        await Promise.all([
+          staleDropboxPaths.length
+            ? fetch("/api/dropbox/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths: staleDropboxPaths }) }).catch(() => undefined)
+            : null,
+          staleSupabasePaths.length
+            ? fetch("/api/templates/media-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths: staleSupabasePaths }) }).catch(() => undefined)
+            : null,
+        ]);
+      }
+
+      setStatus(editing ? "Saved" : "Published");
+      router.replace(editing ? "/templates/manage" : `/t/${result.id}`);
       router.refresh();
     } catch (caughtError) {
-      if (uploaded.length) {
+      if (uploadedToDropbox.length) {
         await fetch("/api/dropbox/delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paths: uploaded.map(({ path }) => path) }),
+          body: JSON.stringify({ paths: uploadedToDropbox.map(({ path }) => path) }),
+        }).catch(() => undefined);
+      }
+      if (uploadedToSupabase.length) {
+        await fetch("/api/templates/media-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths: uploadedToSupabase.map(({ path }) => path) }),
         }).catch(() => undefined);
       }
       setError(caughtError instanceof Error ? caughtError.message : "Could not add this template.");
@@ -184,22 +248,45 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
     }
   };
 
+  const deleteTemplate = async () => {
+    if (!initialData) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch(`/api/templates/mine/${initialData.id}`, { method: "DELETE" });
+      const result = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !result.ok) throw new Error(result.error || "Could not delete this template.");
+      router.replace("/templates/manage");
+      router.refresh();
+    } catch (caughtError) {
+      setDeleteError(caughtError instanceof Error ? caughtError.message : "Could not delete this template.");
+      setDeleting(false);
+    }
+  };
+
   return (
     <main className="flex h-dvh flex-col overflow-hidden bg-white text-black">
       <TemplateTopBar canAddTemplates={false} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} alwaysShowNav />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
       <div className="mx-auto flex w-full max-w-3xl flex-col px-5 pb-[calc(24px+env(safe-area-inset-bottom))] pt-2">
-        <p className="text-2xl font-semibold tracking-tight">New template</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-2xl font-semibold tracking-tight">{editing ? "Edit template" : "New template"}</p>
+          {editing ? (
+            <button type="button" aria-label="Delete template" onClick={() => { setDeleteError(""); setDeleteOpen(true); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 transition active:scale-95"><Trash2 className="h-4 w-4" /></button>
+          ) : null}
+        </div>
 
+        {editing ? null : (
         <div className="mt-4 inline-flex w-fit gap-1 rounded-xl bg-[#f2f2f2] p-1">
           <button type="button" onClick={() => setMode("single")} className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${mode === "single" ? "bg-white shadow-sm" : "text-black/50"}`}>Add one</button>
           <button type="button" onClick={() => setMode("import")} className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${mode === "import" ? "bg-white shadow-sm" : "text-black/50"}`}>Import CSV</button>
         </div>
+        )}
 
-        {mode === "import" ? <ImportTemplatesPanel categories={categories} /> : (
+        {!editing && mode === "import" ? <ImportTemplatesPanel categories={categories} /> : (
         <form onSubmit={submit} className="contents">
         <div className="mt-7 space-y-5">
-          <Field label="Video" optional={Boolean(featuredImage)}>
+          <Field label="Video" optional={Boolean(images.length)}>
             <div className="flex gap-3">
               <div className="min-w-0 flex-1">
                 <div className="relative">
@@ -215,7 +302,7 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
                 <p className="mt-1.5 text-xs text-black/35">
                   {videoUrl && !videoLinkEmbed
                     ? "Paste a valid YouTube Shorts link."
-                    : featuredImage
+                    : images.length
                       ? "Optional · youtube.com/shorts/… or youtu.be/…"
                       : "youtube.com/shorts/… or youtu.be/… — or add a featured image below"}
                 </p>
@@ -298,9 +385,8 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
             </Field>
           </div>
 
-          <Field label="Supplies" optional>
+          <Field label="Supplies (comma separated)" optional>
             <input value={supplies} onChange={(event) => setSupplies(event.target.value)} placeholder="Paper, scissors, glue" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
-            <p className="mt-1.5 text-xs text-black/35">Separate items with commas.</p>
           </Field>
 
           <Field label="Tags" optional>
@@ -345,50 +431,27 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
             {tags.length ? <p className="mt-1.5 text-right text-xs text-black/35">{tags.length}/20</p> : null}
           </Field>
 
-          <Field label="Files">
-            <div className="space-y-2.5">
-              <FilePicker
-                required
-                icon={<FileText className="h-5 w-5" />}
-                title={printable?.name ?? "Printable PDF"}
-                detail={printable ? `${formatFileSize(printable.size)} · Ready to upload` : "Required · PDF · up to 25 MB"}
-                selected={Boolean(printable)}
-                accept="application/pdf"
-                onChange={selectPrintable}
-              />
-              <FilePicker
-                icon={<ImageIcon className="h-5 w-5" />}
-                title={featuredImage?.name ?? "Featured image"}
-                detail={featuredImage
-                  ? `${formatFileSize(featuredImage.size)} · Ready to upload`
-                  : videoReady
-                    ? "Optional · shown while the video loads · JPG, PNG or WebP · up to 15 MB"
-                    : "Required without a video · shown on the template card · JPG, PNG or WebP · up to 15 MB"}
-                selected={Boolean(featuredImage)}
-                accept="image/jpeg,image/png,image/webp"
-                onChange={selectFeaturedImage}
-              />
-              <FilePicker
-                multiple
-                icon={<Images className="h-5 w-5" />}
-                title={gallery.length ? `${gallery.length} gallery image${gallery.length === 1 ? "" : "s"}` : "Gallery images"}
-                detail={gallery.length ? `${formatFileSize(gallery.reduce((total, file) => total + file.size, 0))} · Ready to upload` : "Optional · JPG, PNG or WebP · up to 10"}
-                selected={Boolean(gallery.length)}
-                accept="image/jpeg,image/png,image/webp"
-                onChange={selectGallery}
-              />
-            </div>
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-black/35">
-              <Upload aria-hidden="true" className="h-3.5 w-3.5" />
-              Files upload securely to Dropbox when you publish.
-            </p>
+          <Field label="Images" optional={videoReady}>
+            <ImageReorderField images={images} onChange={setImages} onError={setError} maxImages={MAX_IMAGES} />
+          </Field>
+
+          <Field label="Printable">
+            <FilePicker
+              required={!editing}
+              icon={<FileText className="h-5 w-5" />}
+              title={printable?.name ?? (existingPrintablePath ? filenameFromPath(existingPrintablePath) : "Printable file")}
+              detail={printable ? `${formatFileSize(printable.size)} · Ready to upload` : existingPrintablePath ? "Already uploaded" : "Required · PDF, ZIP, JPG, PNG, or WebP · up to 25 MB"}
+              selected={hasPrintable}
+              accept={PRINTABLE_ACCEPT}
+              onChange={selectPrintable}
+            />
           </Field>
         </div>
 
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-        <button type="submit" disabled={submitting || !mediaReady || !printable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
-          {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : <><Plus className="h-4 w-4" />Publish template</>}
+        <button type="submit" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
+          {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : editing ? <><Check className="h-4 w-4" />Save changes</> : <><Plus className="h-4 w-4" />Publish template</>}
         </button>
         </form>
         )}
@@ -431,6 +494,20 @@ export function AddTemplateForm({ categories, subscribed = false }: { categories
           <button type="button" onClick={() => setCategoryPickerOpen(false)} disabled={!categoryIds.length} className="mt-5 h-12 w-full rounded-xl bg-black text-sm font-semibold text-white disabled:bg-black/20">Done</button>
         </DrawerContent>
       </Drawer>
+
+      {deleteOpen ? (
+        <Drawer open onOpenChange={(open) => { if (!open && !deleting) setDeleteOpen(false); }}>
+          <DrawerContent>
+            <div aria-hidden="true" className="mx-auto mb-5 h-1.5 w-10 rounded-full bg-black/15" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600"><Trash2 className="h-5 w-5" /></div>
+            <DrawerTitle className="mt-5 text-xl font-semibold tracking-tight">Delete template?</DrawerTitle>
+            <DrawerDescription className="mt-2 text-sm leading-6 text-black/50">&ldquo;{title}&rdquo; and its files will be permanently removed. This can&apos;t be undone.</DrawerDescription>
+            {deleteError ? <p role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{deleteError}</p> : null}
+            <button type="button" disabled={deleting} onClick={() => void deleteTemplate()} className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-semibold text-white transition active:scale-[0.99] disabled:opacity-50">{deleting ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Deleting…</> : "Delete"}</button>
+            <button type="button" disabled={deleting} onClick={() => setDeleteOpen(false)} className="mt-2 h-12 w-full rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black disabled:opacity-50">Cancel</button>
+          </DrawerContent>
+        </Drawer>
+      ) : null}
     </main>
   );
 }
@@ -446,14 +523,16 @@ function Field({ label, optional = false, children }: { label: string; optional?
   );
 }
 
-function FilePicker({ icon, title, detail, selected, accept, onChange, required = false, multiple = false }: { icon: ReactNode; title: string; detail: string; selected: boolean; accept: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void; required?: boolean; multiple?: boolean }) {
+function FilePicker({ icon, title, detail, selected, accept, onChange, required = false, multiple = false, showDropboxBadge = true }: { icon: ReactNode; title: string; detail: string; selected: boolean; accept: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void; required?: boolean; multiple?: boolean; showDropboxBadge?: boolean }) {
   return (
     <label className="flex min-h-18 cursor-pointer items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-3 transition hover:border-black/20 active:scale-[0.99]">
       <span className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-[#0061ff] text-white" : "bg-[#f2f2f2] text-black/55"}`}>
         {selected ? <Check className="h-5 w-5" strokeWidth={2.5} /> : icon}
-        <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-md border-2 border-white bg-white text-[#0061ff]" aria-hidden="true">
-          <DropboxMark className="h-3.5 w-3.5" />
-        </span>
+        {showDropboxBadge ? (
+          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-md border-2 border-white bg-white text-[#0061ff]" aria-hidden="true">
+            <DropboxMark className="h-3.5 w-3.5" />
+          </span>
+        ) : null}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{title}</span>
