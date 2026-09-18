@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.29.96", "192.168.29.167"],
+  allowedDevOrigins: ["192.168.29.96", "192.168.29.167", "127.0.0.1"],
   images: {
     localPatterns: [
       {

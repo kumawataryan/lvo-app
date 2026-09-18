@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { TemplateDetailClient } from "@/app/templates/[slug]/template-detail-client";
+import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { hasActiveSubscription } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
@@ -26,5 +27,5 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
   const relatedResult = await listPublishedTemplates({ category: template.category.slug, limit: RELATED_TEMPLATE_LIMIT }).catch(() => []);
   const related = relatedResult.filter((item) => item.id !== template.id);
 
-  return <TemplateDetailClient subscribed={subscribed} initialTemplate={template} initialRelated={related} />;
+  return <TemplateDetailClient subscribed={subscribed} canAddTemplates={canUserAddTemplates(user)} initialTemplate={template} initialRelated={related} />;
 }

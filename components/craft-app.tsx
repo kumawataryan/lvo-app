@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, BookOpen, Bookmark, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, Images, LayoutGrid, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote, Ruler, Scissors, Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
+import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from "@/components/ui/carousel";
 import { EmailIcon, EmailShareButton, FacebookIcon, FacebookShareButton, LinkedinIcon, LinkedinShareButton, PinterestIcon, PinterestShareButton, ThreadsIcon, ThreadsShareButton, TwitterIcon, TwitterShareButton, WhatsappIcon, WhatsappShareButton } from "react-share";
 import { useReactToPrint } from "react-to-print";
@@ -20,7 +21,6 @@ import { useStoryPlayer } from "@/components/story-player";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 
 export type Tab = "templates" | "browse" | "search" | "stories" | "products" | "profile";
-type QuickAction = "share" | "like" | "save" | "download" | "print";
 export type Story = {
   id: string;
   title: string;
@@ -38,7 +38,6 @@ export type Story = {
 };
 
 export type TimedLyricLine = { time: number; text: string };
-type CardFeedback = { templateId: string; action: "like" | "save"; active: boolean; nonce: number };
 
 export const demoStories: Story[] = [
   {
@@ -1324,174 +1323,9 @@ function TemplateFeed(props: {
   horizontalPadding?: string;
 }) {
   const { templates, dark = false, topPadding = "pt-3", horizontalPadding = "px-3 md:px-4 lg:px-5" } = props;
-  const [quickTemplate, setQuickTemplate] = useState<Template | null>(null);
-  const [quickOrigin, setQuickOrigin] = useState({ x: 0, y: 0 });
-  const [quickActionTarget, setQuickActionTarget] = useState<QuickAction | null>(null);
-  const [quickSheet, setQuickSheet] = useState<"share" | "save" | null>(null);
-  const [sheetTemplate, setSheetTemplate] = useState<Template | null>(null);
-  const [subscriptionTemplate, setSubscriptionTemplate] = useState<Template | null>(null);
-  const [cardFeedback, setCardFeedback] = useState<CardFeedback | null>(null);
-  const [printingId, setPrintingId] = useState<string | null>(null);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const printContentRef = useRef<HTMLDivElement>(null);
-  const printRequestRef = useRef<Template | null>(null);
-  const gesturePointerRef = useRef<number | null>(null);
-  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const actionOffsets: Record<QuickAction, { x: number; y: number }> = {
-    like: { x: -48, y: -105 },
-    save: { x: -100, y: -62 },
-    download: { x: -118, y: 0 },
-    print: { x: -100, y: 62 },
-    share: { x: -48, y: 105 },
-  };
-
-  const openQuickActions = (template: Template, x: number, y: number, pointerId?: number) => {
-    triggerHaptic(12);
-    setQuickTemplate(template);
-    setQuickActionTarget(null);
-    gesturePointerRef.current = pointerId ?? null;
-    setQuickOrigin({
-      x: Math.min(Math.max(x, 122), window.innerWidth - 40),
-      y: Math.min(Math.max(y, 120), window.innerHeight - 120),
-    });
-  };
-
-  const closeQuickActions = () => {
-    gesturePointerRef.current = null;
-    setQuickActionTarget(null);
-    setQuickTemplate(null);
-  };
-
-  const updateQuickActionTarget = (action: QuickAction | null) => {
-    setQuickActionTarget((current) => {
-      if (action && action !== current) triggerHaptic(6);
-      return action;
-    });
-  };
-
-  const showCardFeedback = (templateId: string, action: CardFeedback["action"], active: boolean) => {
-    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
-    setCardFeedback({ templateId, action, active, nonce: Date.now() });
-    feedbackTimerRef.current = setTimeout(() => setCardFeedback(null), 900);
-  };
-
-  useEffect(() => () => {
-    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
-  }, []);
-
-  useEffect(() => {
-    if (!quickTemplate) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const previousOverscrollBehavior = document.body.style.overscrollBehavior;
-    document.body.style.overflow = "hidden";
-    document.body.style.overscrollBehavior = "none";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.overscrollBehavior = previousOverscrollBehavior;
-    };
-  }, [quickTemplate]);
-
-  const actionAtPoint = (x: number, y: number) => {
-    const actions = (Object.entries(actionOffsets) as Array<[QuickAction, { x: number; y: number }]>)
-      .filter(([action]) => action !== "print" || quickTemplate?.canPrint);
-    const nearest = actions.reduce<{ action: QuickAction | null; distance: number }>((current, [action, offset]) => {
-      const distance = Math.hypot(x - (quickOrigin.x + offset.x), y - (quickOrigin.y + offset.y));
-      return distance < current.distance ? { action, distance } : current;
-    }, { action: null, distance: Number.POSITIVE_INFINITY });
-    return nearest.distance < 34 ? nearest.action : null;
-  };
-
-  const runPrintAction = useReactToPrint({
-    contentRef: printContentRef,
-    documentTitle: () => printRequestRef.current ? `${printRequestRef.current.slug}-template` : "template",
-    print: async () => {
-      if (printRequestRef.current) await printTemplate(printRequestRef.current);
-    },
-    onAfterPrint: () => {
-      setPrintingId(null);
-      printRequestRef.current = null;
-    },
-    onPrintError: () => {
-      setPrintingId(null);
-      printRequestRef.current = null;
-    },
-  });
-
-  const runQuickAction = (action: QuickAction) => {
-    if (!quickTemplate) return;
-    triggerHaptic(action === "like" ? 10 : [8, 20, 8]);
-    const selectedTemplate = quickTemplate;
-    if (action === "like") {
-      const willBeLiked = !props.interactions.liked.has(selectedTemplate.id);
-      showCardFeedback(selectedTemplate.id, "like", willBeLiked);
-      void props.interactions.toggleLike(selectedTemplate.id);
-    }
-    if (action === "print" && selectedTemplate.canPrint) {
-      if (props.subscribed || selectedTemplate.isFree) {
-        setPrintingId(selectedTemplate.id);
-        printRequestRef.current = selectedTemplate;
-        runPrintAction();
-      } else {
-        setSubscriptionTemplate(selectedTemplate);
-      }
-    }
-    if (action === "download") {
-      if (props.subscribed || selectedTemplate.isFree) {
-        setDownloadingId(selectedTemplate.id);
-        void downloadTemplate(selectedTemplate).finally(() => {
-          setDownloadingId((current) => (current === selectedTemplate.id ? null : current));
-        });
-      } else {
-        setSubscriptionTemplate(selectedTemplate);
-      }
-    }
-    closeQuickActions();
-
-    if (action === "share" || action === "save") {
-      window.setTimeout(() => {
-        setSheetTemplate(selectedTemplate);
-        setQuickSheet(action);
-      }, 0);
-    }
-  };
-
-  useEffect(() => {
-    if (!quickTemplate || gesturePointerRef.current === null) return;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (event.pointerId !== gesturePointerRef.current) return;
-      // Stop the browser from turning this drag into a page scroll — once that
-      // happens it fires pointercancel and the dial vanishes mid-selection.
-      event.preventDefault();
-      updateQuickActionTarget(actionAtPoint(event.clientX, event.clientY));
-    };
-    const handlePointerUp = (event: PointerEvent) => {
-      if (event.pointerId !== gesturePointerRef.current) return;
-      event.preventDefault();
-      const action = actionAtPoint(event.clientX, event.clientY);
-      if (action) runQuickAction(action);
-      else closeQuickActions();
-    };
-
-    window.addEventListener("pointermove", handlePointerMove, { passive: false });
-    window.addEventListener("pointerup", handlePointerUp, true);
-    const handlePointerCancel = (event: PointerEvent) => {
-      if (event.pointerId === gesturePointerRef.current) closeQuickActions();
-    };
-
-    window.addEventListener("pointercancel", handlePointerCancel, true);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp, true);
-      window.removeEventListener("pointercancel", handlePointerCancel, true);
-    };
-  });
 
   return (
-    <div className={`relative m-0 h-full overscroll-y-contain ${horizontalPadding} pb-24 ${topPadding} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${quickTemplate ? "overflow-hidden" : "overflow-y-auto"} ${dark ? "bg-black" : "bg-white"}`}>
+    <div className={`relative m-0 h-full overscroll-y-contain ${horizontalPadding} pb-24 ${topPadding} overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${dark ? "bg-black" : "bg-white"}`}>
       <div className="columns-2 gap-5 sm:columns-3 md:gap-6 lg:columns-4 min-[1033px]:columns-6 xl:columns-7 2xl:columns-9">
         {templates.map((template, index) => (
           <div key={template.id} className="mb-5 break-inside-avoid md:mb-6">
@@ -1499,46 +1333,13 @@ function TemplateFeed(props: {
               template={template}
               eager={index < 9}
               onOpenDetail={() => props.onOpenDetail(template)}
-              onQuickActions={openQuickActions}
-              quickActive={quickTemplate?.id === template.id}
-              feedback={cardFeedback?.templateId === template.id ? cardFeedback : null}
-              downloading={downloadingId === template.id}
+              interactions={props.interactions}
+              subscribed={props.subscribed}
             />
           </div>
         ))}
       </div>
       {templates.length === 0 ? <div className="flex min-h-48 items-center justify-center px-8 text-center text-sm text-black/45">No templates match your search.</div> : null}
-      {quickTemplate ? (
-        <>
-          <div className="fixed inset-0 z-[1200] touch-none bg-black/72 backdrop-blur-[5px]" onClick={closeQuickActions} aria-label="Close quick actions" />
-          <div
-            className="fixed z-[1300] h-0 w-0"
-            style={{ left: quickOrigin.x, top: quickOrigin.y }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <QuickActionButton action="like" target={quickActionTarget} offset={actionOffsets.like} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("like")} ariaLabel="Like template" active={props.interactions.liked.has(quickTemplate.id)}><Heart className="h-6 w-6" fill={props.interactions.liked.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
-            <QuickActionButton action="save" target={quickActionTarget} offset={actionOffsets.save} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("save")} ariaLabel="Save template" active={props.interactions.saved.has(quickTemplate.id)}><Bookmark className="h-6 w-6" fill={props.interactions.saved.has(quickTemplate.id) ? "currentColor" : "none"} strokeWidth={1.8} /></QuickActionButton>
-            <QuickActionButton action="download" target={quickActionTarget} offset={actionOffsets.download} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("download")} ariaLabel="Download printable template">{downloadingId === quickTemplate.id ? <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.8} /> : <Download className="h-6 w-6" strokeWidth={1.8} />}</QuickActionButton>
-            {quickTemplate.canPrint ? <QuickActionButton action="print" target={quickActionTarget} offset={actionOffsets.print} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("print")} ariaLabel="Print template">{printingId === quickTemplate.id ? <LoaderCircle className="h-6 w-6 animate-spin" strokeWidth={1.8} /> : <Printer className="h-6 w-6" strokeWidth={1.8} />}</QuickActionButton> : null}
-            <QuickActionButton action="share" target={quickActionTarget} offset={actionOffsets.share} onTarget={updateQuickActionTarget} onClick={() => runQuickAction("share")} ariaLabel="Share template"><Share2 className="h-6 w-6" strokeWidth={1.8} /></QuickActionButton>
-            {quickActionTarget ? (
-              <div
-                className="pointer-events-none fixed z-[1301] -translate-y-1/2 whitespace-nowrap px-0 py-0 text-5xl font-bold tracking-tight text-white drop-shadow-[0_3px_10px_rgba(0,0,0,0.45)]"
-                style={{
-                  left: Math.max(quickOrigin.x - 200, 16),
-                  top: Math.min(Math.max(quickOrigin.y - 210, 40), window.innerHeight - 40),
-                }}
-              >
-                {quickActionTarget[0].toUpperCase() + quickActionTarget.slice(1)}
-              </div>
-            ) : null}
-          </div>
-        </>
-      ) : null}
-      {quickSheet === "share" && sheetTemplate ? <ShareSheet template={sheetTemplate} onClose={() => { setQuickSheet(null); setSheetTemplate(null); }} /> : null}
-      {quickSheet === "save" && sheetTemplate ? <CollectionSheet template={sheetTemplate} interactions={props.interactions} onChange={(active) => showCardFeedback(sheetTemplate.id, "save", active)} onClose={() => { setQuickSheet(null); setSheetTemplate(null); }} /> : null}
-      {subscriptionTemplate ? <SubscriptionSheet template={subscriptionTemplate} onClose={() => setSubscriptionTemplate(null)} /> : null}
-      <div ref={printContentRef} className="hidden" aria-hidden="true" />
     </div>
   );
 }
@@ -1546,34 +1347,79 @@ function TemplateFeed(props: {
 export function TemplateCard({
   template,
   onOpenDetail,
-  onQuickActions,
-  quickActive,
-  feedback,
+  interactions,
+  subscribed = false,
   statusIcon,
   eager = false,
-  downloading = false,
 }: {
   template: Template;
   onOpenDetail?: () => void;
-  onQuickActions?: (template: Template, x: number, y: number, pointerId?: number) => void;
-  quickActive?: boolean;
-  feedback?: CardFeedback | null;
+  interactions: TemplateInteractions;
+  subscribed?: boolean;
   statusIcon?: "like" | "save";
   eager?: boolean;
-  downloading?: boolean;
 }) {
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressRef = useRef(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const printContentRef = useRef<HTMLDivElement>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [panel, setPanel] = useState<"save" | "share" | null>(null);
+  const [cardFeedback, setCardFeedback] = useState<{ action: "like" | "save"; active: boolean; nonce: number } | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [subscriptionPrompt, setSubscriptionPrompt] = useState(false);
   const hasVideo = Boolean(template.videoSrc) || Boolean(template.videoEmbedUrl);
+  const liked = interactions.liked.has(template.id);
+  const saved = interactions.saved.has(template.id);
+  const canDownload = subscribed || template.isFree;
 
-  const clearHoldTimer = () => {
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    holdTimerRef.current = null;
+  useEffect(() => () => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+  }, []);
+
+  const runPrint = useReactToPrint({
+    contentRef: printContentRef,
+    documentTitle: () => `${template.slug}-template`,
+    print: async () => { await printTemplate(template); },
+    onAfterPrint: () => setPrinting(false),
+    onPrintError: () => setPrinting(false),
+  });
+
+  const showFeedback = (action: "like" | "save", active: boolean) => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    setCardFeedback({ action, active, nonce: Date.now() });
+    feedbackTimerRef.current = setTimeout(() => setCardFeedback(null), 900);
+  };
+
+  const handleLike = () => {
+    triggerHaptic(10);
+    showFeedback("like", !liked);
+    void interactions.toggleLike(template.id);
+  };
+
+  const handleDownload = () => {
+    if (!canDownload) {
+      setSubscriptionPrompt(true);
+      return;
+    }
+    if (downloading) return;
+    setDownloading(true);
+    void downloadTemplate(template).finally(() => setDownloading(false));
+  };
+
+  const handlePrint = () => {
+    if (!canDownload) {
+      setSubscriptionPrompt(true);
+      return;
+    }
+    if (printing) return;
+    setPrinting(true);
+    runPrint();
   };
 
   return (
     <article
-      className={`template-card relative m-0 w-full cursor-pointer overflow-hidden rounded-[22px] bg-[#f2eee8] p-0 transition-transform duration-200 ${hasVideo ? "aspect-[9/16]" : "ring-1 ring-black/10"} ${quickActive ? "z-[1201] touch-none rotate-[-2deg] scale-[1.015]" : "touch-manipulation"}`}
+      className={`template-card relative m-0 w-full cursor-pointer touch-manipulation overflow-hidden rounded-[22px] bg-[#f2eee8] p-0 ${hasVideo ? "aspect-[9/16]" : "ring-1 ring-black/10"}`}
       onContextMenu={(event) => event.preventDefault()}
       onClick={onOpenDetail}
     >
@@ -1583,10 +1429,10 @@ export function TemplateCard({
           {statusIcon === "like" ? <Heart className="h-4 w-4" fill="currentColor" /> : <Bookmark className="h-4 w-4" fill="currentColor" />}
         </span>
       ) : null}
-      {feedback ? (
-        <span key={feedback.nonce} aria-live="polite" aria-label={feedback.active ? (feedback.action === "like" ? "Liked" : "Saved") : (feedback.action === "like" ? "Like removed" : "Removed from saved")} className="card-action-feedback pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+      {cardFeedback ? (
+        <span key={cardFeedback.nonce} aria-live="polite" aria-label={cardFeedback.active ? (cardFeedback.action === "like" ? "Liked" : "Saved") : (cardFeedback.action === "like" ? "Like removed" : "Removed from saved")} className="card-action-feedback pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <span className="flex items-center justify-center text-white drop-shadow-[0_3px_10px_rgba(0,0,0,0.7)]">
-            {feedback.action === "like" ? <Heart className="h-8 w-8" fill={feedback.active ? "currentColor" : "none"} strokeWidth={2.2} /> : <Bookmark className="h-8 w-8" fill={feedback.active ? "currentColor" : "none"} strokeWidth={2.2} />}
+            {cardFeedback.action === "like" ? <Heart className="h-8 w-8" fill={cardFeedback.active ? "currentColor" : "none"} strokeWidth={2.2} /> : <Bookmark className="h-8 w-8" fill={cardFeedback.active ? "currentColor" : "none"} strokeWidth={2.2} />}
           </span>
         </span>
       ) : null}
@@ -1596,37 +1442,61 @@ export function TemplateCard({
           <span className="text-[11px] font-semibold text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">Downloading…</span>
         </span>
       ) : null}
+
       <button
+        ref={triggerRef}
         type="button"
-        aria-label={`Quick actions for ${template.name}`}
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          longPressRef.current = false;
-          clearHoldTimer();
-          const rect = event.currentTarget.getBoundingClientRect();
-          holdTimerRef.current = setTimeout(() => {
-            holdTimerRef.current = null;
-            longPressRef.current = true;
-            onQuickActions?.(template, rect.left + rect.width / 2, rect.top + rect.height / 2, event.pointerId);
-          }, 450);
-        }}
-        onPointerUp={() => {
-          clearHoldTimer();
-        }}
-        onPointerCancel={clearHoldTimer}
+        aria-label={menuOpen ? `Close quick actions for ${template.name}` : `Quick actions for ${template.name}`}
+        aria-expanded={menuOpen}
         onClick={(event) => {
           event.stopPropagation();
-          if (longPressRef.current) {
-            longPressRef.current = false;
-            return;
-          }
-          const rect = event.currentTarget.getBoundingClientRect();
-          onQuickActions?.(template, rect.left + rect.width / 2, rect.top + rect.height / 2);
+          setMenuOpen((open) => !open);
         }}
-        className="absolute bottom-2 right-2 z-10 flex h-9 w-9 touch-none items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md shadow-none transition active:scale-90"
+        className="absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md transition active:scale-90"
       >
-        <MoreHorizontal className="h-5 w-5" strokeWidth={2.2} />
+        {menuOpen ? <X className="h-5 w-5" strokeWidth={2.2} /> : <MoreHorizontal className="h-5 w-5" strokeWidth={2.2} />}
       </button>
+
+      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+        <PopoverContent
+          anchor={triggerRef}
+          side="top"
+          align="end"
+          sideOffset={8}
+          className="flex w-auto min-w-0 flex-col gap-1.5 rounded-full bg-black/80 p-1.5 shadow-lg backdrop-blur-md"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button type="button" aria-label={liked ? "Unlike" : "Like"} onClick={() => { handleLike(); setMenuOpen(false); }} className={`flex h-10 w-10 items-center justify-center rounded-full transition active:scale-90 hover:bg-white/15 ${liked ? "text-red-500" : "text-white"}`}><Heart className="h-5 w-5" fill={liked ? "currentColor" : "none"} /></button>
+          <button type="button" aria-label="Save" onClick={() => { setMenuOpen(false); setPanel("save"); }} className="flex h-10 w-10 items-center justify-center rounded-full text-white transition active:scale-90 hover:bg-white/15"><Bookmark className="h-5 w-5" fill={saved ? "currentColor" : "none"} /></button>
+          <button type="button" aria-label="Download" onClick={() => { handleDownload(); setMenuOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-white transition active:scale-90 hover:bg-white/15">{downloading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}</button>
+          {template.canPrint ? <button type="button" aria-label="Print" onClick={() => { handlePrint(); setMenuOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-white transition active:scale-90 hover:bg-white/15">{printing ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Printer className="h-5 w-5" />}</button> : null}
+          <button type="button" aria-label="Share" onClick={() => { setMenuOpen(false); setPanel("share"); }} className="flex h-10 w-10 items-center justify-center rounded-full text-white transition active:scale-90 hover:bg-white/15"><Share2 className="h-5 w-5" /></button>
+        </PopoverContent>
+      </Popover>
+
+      <Popover open={panel === "save"} onOpenChange={(open) => setPanel(open ? "save" : null)}>
+        <PopoverContent anchor={triggerRef} align="end" onClick={(event) => event.stopPropagation()}>
+          <SaveToCollectionOptions
+            template={template}
+            interactions={interactions}
+            onClose={() => setPanel(null)}
+            onChange={(active) => showFeedback("save", active)}
+            renderTitle={(title) => <PopoverTitle>{title}</PopoverTitle>}
+            compact
+          />
+        </PopoverContent>
+      </Popover>
+
+      <Popover open={panel === "share"} onOpenChange={(open) => setPanel(open ? "share" : null)}>
+        <PopoverContent anchor={triggerRef} align="end" onClick={(event) => event.stopPropagation()}>
+          <PopoverTitle>Share template</PopoverTitle>
+          <PopoverDescription className="sr-only">Choose where to share {template.name}.</PopoverDescription>
+          <ShareOptionsGrid template={template} onClose={() => setPanel(null)} />
+        </PopoverContent>
+      </Popover>
+
+      {subscriptionPrompt ? <SubscriptionSheet template={template} onClose={() => setSubscriptionPrompt(false)} /> : null}
+      <div ref={printContentRef} className="hidden" aria-hidden="true" />
     </article>
   );
 }
@@ -1645,10 +1515,11 @@ function SubscriptionSheet({ template, onClose }: { template: Template; onClose:
   );
 }
 
-function CollectionSheet({ template, interactions, onClose, onChange }: { template: Template; interactions: TemplateInteractions; onClose: () => void; onChange?: (active: boolean) => void }) {
+function SaveToCollectionOptions({ template, interactions, onClose, onChange, renderTitle, compact = false }: { template: Template; interactions: TemplateInteractions; onClose: () => void; onChange?: (active: boolean) => void; renderTitle?: (title: string) => ReactNode; compact?: boolean }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  const avatarSize = compact ? 28 : 36;
 
   const saveToCollection = async (options: { collectionId?: string; newName?: string }) => {
     setSaving(true);
@@ -1670,79 +1541,36 @@ function CollectionSheet({ template, interactions, onClose, onChange }: { templa
     }
   };
 
+  const title = creating ? "New collection" : "Save to collection";
+
   return (
-    <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DrawerContent>
-        <div aria-hidden="true" className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15" />
-        <div>
-          <div className="flex items-center gap-2">
-            {creating ? <button type="button" aria-label="Back" onClick={() => setCreating(false)} className="flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.05]"><ArrowLeft className="h-4 w-4" /></button> : null}
-            <DrawerTitle className="text-lg font-semibold tracking-tight">{creating ? "New collection" : "Save to collection"}</DrawerTitle>
+    <div>
+      <div className="flex items-center gap-2">
+        {creating ? <button type="button" aria-label="Back" onClick={() => setCreating(false)} className="flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.05]"><ArrowLeft className="h-4 w-4" /></button> : null}
+        {renderTitle ? renderTitle(title) : <span className="text-lg font-semibold tracking-tight">{title}</span>}
+      </div>
+      {creating ? (
+        <div className={`space-y-3 ${compact ? "mt-2" : "mt-4"}`}>
+          <input id="quick-collection-name" aria-label="Collection name" autoFocus value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && name.trim()) void saveToCollection({ newName: name }); }} placeholder="Collection name" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition focus:ring-2" />
+          <button type="button" disabled={!name.trim() || saving} onClick={() => void saveToCollection({ newName: name })} className="h-12 w-full rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-black/15">{saving ? "Saving…" : "Create and save"}</button>
+        </div>
+      ) : (
+        <div className={compact ? "mt-2 space-y-1.5" : "mt-4 space-y-2"}>
+          <button type="button" onClick={() => setCreating(true)} className={`flex w-full items-center gap-3 rounded-xl bg-black text-left text-sm font-semibold text-white transition active:scale-[0.99] ${compact ? "px-3 py-2.5" : "px-4 py-3.5"}`}><FolderPlus className="h-5 w-5" /> New collection</button>
+          <div className={compact ? "max-h-64 space-y-1.5 overflow-y-auto" : "space-y-2"}>
+            {interactions.collections.map((collection) => (
+              <button key={collection.id} type="button" disabled={saving} onClick={() => void saveToCollection({ collectionId: collection.id })} className={`flex w-full items-center gap-3 rounded-xl bg-[#f2f2f2] text-left text-sm font-medium text-black/75 transition active:scale-[0.99] disabled:opacity-50 ${compact ? "px-2.5 py-2" : "px-3 py-2.5"}`}>
+                {collection.childAvatar && CHILD_AVATAR_SRC[collection.childAvatar]
+                  ? <Image src={CHILD_AVATAR_SRC[collection.childAvatar]} alt="" width={avatarSize} height={avatarSize} className={`shrink-0 rounded-full object-cover ${compact ? "h-7 w-7" : "h-9 w-9"}`} />
+                  : <span className={`flex shrink-0 items-center justify-center rounded-full bg-white ${compact ? "h-7 w-7" : "h-9 w-9"}`}><Folder className="h-4 w-4 text-black/40" /></span>}
+                <span className="min-w-0 truncate">{collection.name}</span>
+              </button>
+            ))}
+            {interactions.saved.has(template.id) ? <button type="button" disabled={saving} onClick={() => void removeSaved()} className="flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-medium text-black/45 transition active:scale-[0.99] disabled:opacity-50">Remove from saved</button> : null}
           </div>
         </div>
-        <DrawerDescription className="sr-only">Save {template.name} to a collection.</DrawerDescription>
-        {creating ? (
-          <div className="mt-4 space-y-3">
-            <input id="quick-collection-name" aria-label="Collection name" autoFocus value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && name.trim()) void saveToCollection({ newName: name }); }} placeholder="Collection name" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition focus:ring-2" />
-            <button type="button" disabled={!name.trim() || saving} onClick={() => void saveToCollection({ newName: name })} className="h-12 w-full rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-black/15">{saving ? "Saving…" : "Create and save"}</button>
-          </div>
-        ) : (
-          <div className="mt-4 space-y-2">
-            <button type="button" onClick={() => setCreating(true)} className="flex w-full items-center gap-3 rounded-xl bg-black px-4 py-3.5 text-left text-sm font-semibold text-white transition active:scale-[0.99]"><FolderPlus className="h-5 w-5" /> New collection</button>
-              {interactions.collections.map((collection) => (
-                <button key={collection.id} type="button" disabled={saving} onClick={() => void saveToCollection({ collectionId: collection.id })} className="flex w-full items-center gap-3 rounded-xl bg-[#f2f2f2] px-3 py-2.5 text-left text-sm font-medium text-black/75 transition active:scale-[0.99] disabled:opacity-50">
-                  {collection.childAvatar && CHILD_AVATAR_SRC[collection.childAvatar]
-                    ? <Image src={CHILD_AVATAR_SRC[collection.childAvatar]} alt="" width={36} height={36} className="h-9 w-9 shrink-0 rounded-full object-cover" />
-                    : <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white"><Folder className="h-4 w-4 text-black/40" /></span>}
-                  <span className="min-w-0 truncate">{collection.name}</span>
-                </button>
-              ))}
-              {interactions.saved.has(template.id) ? <button type="button" disabled={saving} onClick={() => void removeSaved()} className="flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-medium text-black/45 transition active:scale-[0.99] disabled:opacity-50">Remove from saved</button> : null}
-          </div>
-        )}
-      </DrawerContent>
-    </Drawer>
-  );
-}
-
-export function LibraryQuickActions({ template, interactions, subscribed = false, onClose }: { template: Template; interactions: TemplateInteractions; subscribed?: boolean; onClose: () => void }) {
-  const router = useRouter();
-  const [panel, setPanel] = useState<"actions" | "save" | "share">("actions");
-  const [downloading, setDownloading] = useState(false);
-
-  if (panel === "save") return <CollectionSheet template={template} interactions={interactions} onClose={onClose} />;
-  if (panel === "share") return <ShareSheet template={template} onClose={onClose} />;
-
-  return (
-    <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DrawerContent>
-        <div aria-hidden="true" className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15" />
-        <DrawerTitle className="truncate text-lg font-semibold tracking-tight">{template.name}</DrawerTitle>
-        <DrawerDescription className="sr-only">Quick actions for {template.name}.</DrawerDescription>
-        <div className="mt-4 grid grid-cols-4 gap-2">
-          <button type="button" onClick={() => { void interactions.toggleLike(template.id); onClose(); }} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Heart className="h-5 w-5" fill={interactions.liked.has(template.id) ? "currentColor" : "none"} />{interactions.liked.has(template.id) ? "Unlike" : "Like"}</button>
-          <button type="button" onClick={() => setPanel("save")} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Bookmark className="h-5 w-5" fill={interactions.saved.has(template.id) ? "currentColor" : "none"} />Save</button>
-          <button type="button" disabled={downloading} onClick={() => {
-            if (!subscribed && !template.isFree) {
-              onClose();
-              router.push(`/subscription?template=${template.slug}`);
-              return;
-            }
-            setDownloading(true);
-            void downloadTemplate(template).finally(() => { setDownloading(false); onClose(); });
-          }} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium disabled:opacity-50">{downloading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}Download</button>
-          <button type="button" onClick={() => setPanel("share")} className="flex flex-col items-center gap-2 rounded-xl bg-[#f2f2f2] px-2 py-3 text-[11px] font-medium"><Share2 className="h-5 w-5" />Share</button>
-        </div>
-      </DrawerContent>
-    </Drawer>
-  );
-}
-
-function QuickActionButton({ action, target, offset, onTarget, onClick, ariaLabel, active, children }: { action: QuickAction; target: QuickAction | null; offset: { x: number; y: number }; onTarget?: (action: QuickAction) => void; onClick: () => void; ariaLabel: string; active?: boolean; children: ReactNode }) {
-  return (
-    <button type="button" aria-label={ariaLabel} onPointerEnter={() => onTarget?.(action)} onFocus={() => onTarget?.(action)} onClick={onClick} style={{ left: offset.x, top: offset.y }} className={`quick-action-pop absolute flex h-[60px] w-[60px] -translate-x-1/2 -translate-y-1/2 transform-gpu items-center justify-center rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.3)] transition-[transform,background-color,color,box-shadow] duration-150 ease-out hover:scale-110 hover:bg-white hover:text-black focus-visible:scale-110 focus-visible:bg-white focus-visible:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 active:scale-95 ${target === action || active ? "scale-110 bg-white !text-black shadow-[0_10px_28px_rgba(0,0,0,0.4)]" : "bg-[#292a27] text-white"}`}>
-      {children}
-    </button>
+      )}
+    </div>
   );
 }
 
@@ -1869,15 +1697,14 @@ function MasonryGrid({ tiles }: { tiles: MasonryTile[] }) {
   );
 }
 
-export function TemplateDetail({ template, related, onBack, subscribed = false, interactions }: { template: Template; related: Template[]; onBack: () => void; subscribed?: boolean; interactions: TemplateInteractions }) {
+export function TemplateDetail({ template, related, onBack, subscribed = false, canAddTemplates = false, interactions }: { template: Template; related: Template[]; onBack: () => void; subscribed?: boolean; canAddTemplates?: boolean; interactions: TemplateInteractions }) {
   const router = useRouter();
   const [heartBurst, setHeartBurst] = useState(false);
-  const [shareSheet, setShareSheet] = useState(false);
-  const [infoPanel, setInfoPanel] = useState<"details" | "supplies" | null>(null);
-  const [saveSheet, setSaveSheet] = useState(false);
+  const [sharePopoverOpen, setSharePopoverOpen] = useState(false);
+  const [suppliesPopoverOpen, setSuppliesPopoverOpen] = useState(false);
+  const [savePopoverOpen, setSavePopoverOpen] = useState(false);
   const [subscriptionPrompt, setSubscriptionPrompt] = useState(false);
   const [galleryTemplate, setGalleryTemplate] = useState<Template | null>(null);
-  const [quickTemplate, setQuickTemplate] = useState<Template | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const detailPrintContentRef = useRef<HTMLDivElement>(null);
@@ -1939,7 +1766,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
               }}
               className="relative w-full touch-manipulation select-none overflow-hidden"
             >
-              <DetailVideoPlayer template={template} active onDownload={requestDownload} downloading={downloading} onPrint={requestPrint} printing={printing} />
+              <DetailVideoPlayer key={template.id} template={template} active onDownload={requestDownload} downloading={downloading} onPrint={requestPrint} printing={printing} />
               {heartBurst ? (
                 <div className="heart-burst pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
                   <Heart fill="currentColor" strokeWidth={1.5} />
@@ -1951,9 +1778,51 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
           </div>
           <div className="mt-2 flex items-center gap-2">
             <button type="button" aria-label="Like" onClick={() => void interactions.toggleLike(template.id)} className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${liked ? "text-red-500" : "text-black/70"}`}><Heart className="h-6 w-6" fill={liked ? "currentColor" : "none"} /></button>
-            <button type="button" aria-label="Save" onClick={() => setSaveSheet(true)} className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${saved ? "text-black" : "text-black/70"}`}><Bookmark className="h-6 w-6" fill={saved ? "currentColor" : "none"} strokeWidth={1.8} /></button>
-            <button type="button" aria-label="Share" onClick={() => setShareSheet(true)} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Share2 className="h-6 w-6" strokeWidth={1.8} /></button>
-            {template.supplyItems.length ? <button type="button" aria-label="Supplies" onClick={() => setInfoPanel("supplies")} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Package className="h-6 w-6" /></button> : null}
+
+            <Popover open={savePopoverOpen} onOpenChange={setSavePopoverOpen}>
+              <PopoverTrigger aria-label="Save" className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${saved ? "text-black" : "text-black/70"}`}>
+                <Bookmark className="h-6 w-6" fill={saved ? "currentColor" : "none"} strokeWidth={1.8} />
+              </PopoverTrigger>
+              <PopoverContent>
+                <SaveToCollectionOptions
+                  template={template}
+                  interactions={interactions}
+                  onClose={() => setSavePopoverOpen(false)}
+                  renderTitle={(title) => <PopoverTitle>{title}</PopoverTitle>}
+                  compact
+                />
+              </PopoverContent>
+            </Popover>
+
+            <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
+              <PopoverTrigger aria-label="Share" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]">
+                <Share2 className="h-6 w-6" strokeWidth={1.8} />
+              </PopoverTrigger>
+              <PopoverContent>
+                <PopoverTitle>Share template</PopoverTitle>
+                <PopoverDescription className="sr-only">Choose where to share {template.name}.</PopoverDescription>
+                <ShareOptionsGrid template={template} onClose={() => setSharePopoverOpen(false)} />
+              </PopoverContent>
+            </Popover>
+
+            {template.supplyItems.length ? (
+              <Popover open={suppliesPopoverOpen} onOpenChange={setSuppliesPopoverOpen}>
+                <PopoverTrigger aria-label="Supplies" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]">
+                  <Package className="h-6 w-6" />
+                </PopoverTrigger>
+                <PopoverContent>
+                  <PopoverTitle>Supplies</PopoverTitle>
+                  <div className="flex flex-wrap gap-2">
+                    {template.supplyItems.map((supply) => (
+                      <span key={supply.name} className="inline-flex items-center gap-2 rounded-lg bg-[#f2f2f2] px-3 py-2 text-sm font-medium text-black/70">
+                        <SupplyItemIcon icon={supply.icon} />{supply.name}
+                      </span>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            ) : null}
+
             {template.galleryImages.length ? <button type="button" aria-label="Open image gallery" onClick={() => setGalleryTemplate(template)} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Images className="h-6 w-6" strokeWidth={1.8} /></button> : null}
           </div>
         </div>
@@ -1963,7 +1832,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
       key: item?.id ?? `placeholder-${index}`,
       span: 1,
       render: item ? (
-        <TemplateCard template={item} onOpenDetail={() => router.push(`/t/${item.id}`)} onQuickActions={() => setQuickTemplate(item)} />
+        <TemplateCard template={item} onOpenDetail={() => router.push(`/t/${item.id}`)} interactions={interactions} subscribed={subscribed} />
       ) : (
         <DiscoveryPlaceholderCard variant={index} />
       ),
@@ -1971,32 +1840,15 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   ];
 
   return (
-    <main className="fixed inset-0 w-screen max-w-none overflow-y-auto bg-white text-black [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="w-full px-4 pb-16 pt-4 md:px-5 lg:px-6 lg:pt-6">
-        <MasonryGrid tiles={tiles} />
+    <main className="fixed inset-0 flex w-screen max-w-none flex-col bg-white text-black">
+      <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} />
+      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="w-full px-4 pb-16 pt-4 md:px-5 lg:px-6 lg:pt-6">
+          <MasonryGrid tiles={tiles} />
+        </div>
       </div>
 
-      {infoPanel ? (
-        <Drawer open onOpenChange={(open) => { if (!open) setInfoPanel(null); }}>
-          <DrawerContent>
-          <DrawerTitle className="text-lg font-semibold tracking-tight">Supplies</DrawerTitle>
-          <DrawerDescription className="sr-only">Template information and materials for {template.name}.</DrawerDescription>
-          {infoPanel === "supplies" ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-                {template.supplyItems.map((supply) => (
-                  <span key={supply.name} className="inline-flex items-center gap-2 rounded-lg bg-[#f2f2f2] px-3 py-2 text-sm font-medium text-black/70">
-                    <SupplyItemIcon icon={supply.icon} />{supply.name}
-                  </span>
-                ))}
-            </div>
-          ) : null}
-          </DrawerContent>
-        </Drawer>
-      ) : null}
-      {saveSheet ? <CollectionSheet template={template} interactions={interactions} onClose={() => setSaveSheet(false)} /> : null}
-      {shareSheet ? <ShareSheet template={template} onClose={() => setShareSheet(false)} /> : null}
       {subscriptionPrompt ? <SubscriptionSheet template={template} onClose={() => setSubscriptionPrompt(false)} /> : null}
-      {quickTemplate ? <LibraryQuickActions template={quickTemplate} interactions={interactions} subscribed={subscribed} onClose={() => setQuickTemplate(null)} /> : null}
       <div ref={detailPrintContentRef} className="hidden" aria-hidden="true" />
       {galleryTemplate ? <TemplateGallery template={galleryTemplate} onClose={() => setGalleryTemplate(null)} /> : null}
     </main>
@@ -2008,7 +1860,7 @@ function SupplyItemIcon({ icon }: { icon: string | null }) {
   return <Icon className="h-4 w-4 text-black/45" aria-hidden="true" />;
 }
 
-function ShareSheet({ template, onClose }: { template: Template; onClose: () => void }) {
+function ShareOptionsGrid({ template, onClose }: { template: Template; onClose: () => void }) {
   const url = typeof window === "undefined" ? `/t/${template.id}` : window.location.href;
   const title = `Make ${template.name} with Lovely Vibes Only.`;
 
@@ -2022,40 +1874,32 @@ function ShareSheet({ template, onClose }: { template: Template; onClose: () => 
   };
 
   return (
-    <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DrawerContent>
-        <div aria-hidden="true" className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-black/15" />
-        <DrawerTitle className="text-lg font-semibold tracking-tight">Share template</DrawerTitle>
-        <DrawerDescription className="sr-only">Choose where to share {template.name}.</DrawerDescription>
-
-        <div className="mt-5 grid grid-cols-4 gap-x-2 gap-y-4">
-          <ShareOption label="WhatsApp">
-            <WhatsappShareButton url={url} title={title} aria-label="Share on WhatsApp"><WhatsappIcon size={42} round /></WhatsappShareButton>
-          </ShareOption>
-          <ShareOption label="Facebook">
-            <FacebookShareButton url={url} hashtag="#LVOCrafts" aria-label="Share on Facebook"><FacebookIcon size={42} round /></FacebookShareButton>
-          </ShareOption>
-          <ShareOption label="Twitter">
-            <TwitterShareButton url={url} title={title} aria-label="Share on Twitter"><TwitterIcon size={42} round /></TwitterShareButton>
-          </ShareOption>
-          <ShareOption label="LinkedIn">
-            <LinkedinShareButton url={url} title={template.name} summary={title} aria-label="Share on LinkedIn"><LinkedinIcon size={42} round /></LinkedinShareButton>
-          </ShareOption>
-          <ShareOption label="Threads">
-            <ThreadsShareButton url={url} title={title} aria-label="Share on Threads"><ThreadsIcon size={42} round /></ThreadsShareButton>
-          </ShareOption>
-          <ShareOption label="Instagram">
-            <button type="button" aria-label="Share on Instagram" onClick={shareToInstagram} className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-gradient-to-br from-[#feda75] via-[#d62976] to-[#4f5bd5] text-white"><Share2 className="h-5 w-5" /></button>
-          </ShareOption>
-          <ShareOption label="Pinterest">
-            <PinterestShareButton url={url} media={url} description={title} aria-label="Share on Pinterest"><PinterestIcon size={42} round /></PinterestShareButton>
-          </ShareOption>
-          <ShareOption label="Email">
-            <EmailShareButton url={url} subject={template.name} body={title} aria-label="Share by email"><EmailIcon size={42} round /></EmailShareButton>
-          </ShareOption>
-        </div>
-      </DrawerContent>
-    </Drawer>
+    <div className="grid grid-cols-4 gap-x-2 gap-y-4">
+      <ShareOption label="WhatsApp">
+        <WhatsappShareButton url={url} title={title} aria-label="Share on WhatsApp"><WhatsappIcon size={42} round /></WhatsappShareButton>
+      </ShareOption>
+      <ShareOption label="Facebook">
+        <FacebookShareButton url={url} hashtag="#LVOCrafts" aria-label="Share on Facebook"><FacebookIcon size={42} round /></FacebookShareButton>
+      </ShareOption>
+      <ShareOption label="Twitter">
+        <TwitterShareButton url={url} title={title} aria-label="Share on Twitter"><TwitterIcon size={42} round /></TwitterShareButton>
+      </ShareOption>
+      <ShareOption label="LinkedIn">
+        <LinkedinShareButton url={url} title={template.name} summary={title} aria-label="Share on LinkedIn"><LinkedinIcon size={42} round /></LinkedinShareButton>
+      </ShareOption>
+      <ShareOption label="Threads">
+        <ThreadsShareButton url={url} title={title} aria-label="Share on Threads"><ThreadsIcon size={42} round /></ThreadsShareButton>
+      </ShareOption>
+      <ShareOption label="Instagram">
+        <button type="button" aria-label="Share on Instagram" onClick={shareToInstagram} className="flex h-[42px] w-[42px] items-center justify-center rounded-full bg-gradient-to-br from-[#feda75] via-[#d62976] to-[#4f5bd5] text-white"><Share2 className="h-5 w-5" /></button>
+      </ShareOption>
+      <ShareOption label="Pinterest">
+        <PinterestShareButton url={url} media={url} description={title} aria-label="Share on Pinterest"><PinterestIcon size={42} round /></PinterestShareButton>
+      </ShareOption>
+      <ShareOption label="Email">
+        <EmailShareButton url={url} subject={template.name} body={title} aria-label="Share by email"><EmailIcon size={42} round /></EmailShareButton>
+      </ShareOption>
+    </div>
   );
 }
 
@@ -2486,6 +2330,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
   const [youtubeCurrentTime, setYoutubeCurrentTime] = useState(0);
   const [muted, setMuted] = useState(false);
   const [speeding, setSpeeding] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null);
   const videoSrc = template.videoSrc;
   const videoEmbedUrl = template.videoEmbedUrl;
   const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
@@ -2575,13 +2420,16 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
   };
 
   return (
-    <div className={`relative w-full bg-black ${showsVisual ? "aspect-[9/16]" : ""}`}>
+    <div
+      className={`relative w-full bg-black ${showsVisual && !aspectRatio ? "aspect-[9/16]" : ""}`}
+      style={aspectRatio ? { aspectRatio: String(aspectRatio) } : undefined}
+    >
       {embed ? (
         <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" />
       ) : videoSrc ? (
         <video
           ref={videoRef}
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-contain"
           src={videoSrc}
           autoPlay={active}
           muted={muted}
@@ -2593,12 +2441,27 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
           onPause={() => setVideoPlaying(false)}
           onCanPlay={(event) => { if (active) event.currentTarget.play().catch(() => undefined); }}
           onLoadedData={(event) => { if (active) event.currentTarget.play().catch(() => undefined); }}
-          onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)}
+          onLoadedMetadata={(event) => {
+            const video = event.currentTarget;
+            setVideoDuration(video.duration || 0);
+            if (video.videoWidth && video.videoHeight) setAspectRatio(video.videoWidth / video.videoHeight);
+          }}
           onDurationChange={(event) => setVideoDuration(event.currentTarget.duration || 0)}
           onTimeUpdate={(event) => setVideoCurrentTime(event.currentTarget.currentTime)}
         />
       ) : previewImage ? (
-        <Image src={previewImage} alt="" fill sizes="(min-width: 1024px) 600px, 100vw" className="object-cover" priority />
+        <Image
+          src={previewImage}
+          alt=""
+          fill
+          sizes="(min-width: 1024px) 600px, 100vw"
+          className="object-contain"
+          priority
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            if (image.naturalWidth && image.naturalHeight) setAspectRatio(image.naturalWidth / image.naturalHeight);
+          }}
+        />
       ) : null}
       <div
         className="absolute inset-0"
