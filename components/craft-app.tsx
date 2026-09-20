@@ -1,12 +1,13 @@
 "use client";
 
-import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, forwardRef, Fragment, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, BookOpen, Bookmark, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, Images, LayoutGrid, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote, Ruler, Scissors, Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
+import { toast } from "@/components/ui/toast";
 import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious, type CarouselApi } from "@/components/ui/carousel";
 import { EmailIcon, EmailShareButton, FacebookIcon, FacebookShareButton, LinkedinIcon, LinkedinShareButton, PinterestIcon, PinterestShareButton, ThreadsIcon, ThreadsShareButton, TwitterIcon, TwitterShareButton, WhatsappIcon, WhatsappShareButton } from "react-share";
@@ -909,7 +910,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
         </div>
       </div>
       {categoryOptions?.length ? (
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 md:gap-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-9">
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 md:gap-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
           {categoryOptions.map((category) => (
             <button
               key={category.id}
@@ -1326,7 +1327,7 @@ function TemplateFeed(props: {
 
   return (
     <div className={`relative m-0 h-full overscroll-y-contain ${horizontalPadding} pb-24 ${topPadding} overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${dark ? "bg-black" : "bg-white"}`}>
-      <div className="columns-2 gap-5 sm:columns-3 md:gap-6 lg:columns-4 min-[1033px]:columns-6 xl:columns-7 2xl:columns-9">
+      <div className="columns-2 gap-5 sm:columns-3 md:gap-6 lg:columns-4 min-[1033px]:columns-5 xl:columns-6 2xl:columns-8">
         {templates.map((template, index) => (
           <div key={template.id} className="mb-5 break-inside-avoid md:mb-6">
             <TemplateCard
@@ -1523,9 +1524,14 @@ function SaveToCollectionOptions({ template, interactions, onClose, onChange, re
 
   const saveToCollection = async (options: { collectionId?: string; newName?: string }) => {
     setSaving(true);
+    const newName = options.newName?.trim() ?? "";
+    const collectionName = options.collectionId
+      ? interactions.collections.find((collection) => collection.id === options.collectionId)?.name
+      : interactions.collections.find((collection) => collection.name.toLowerCase() === newName.toLowerCase())?.name ?? newName;
     const saved = await interactions.saveToCollection(template.id, options);
     setSaving(false);
     if (saved) {
+      toast.add({ title: collectionName ? `Saved to ${collectionName}` : "Saved to collection", data: { image: template.thumbnailUrl ?? template.galleryImages[0] } });
       onChange?.(true);
       onClose();
     }
@@ -1533,9 +1539,11 @@ function SaveToCollectionOptions({ template, interactions, onClose, onChange, re
 
   const removeSaved = async () => {
     setSaving(true);
+    const collectionNames = interactions.collections.filter((collection) => collection.templateIds.includes(template.id)).map((collection) => collection.name).join(", ");
     const removed = await interactions.removeSaved(template.id);
     setSaving(false);
     if (removed) {
+      toast.add({ title: collectionNames ? `Removed from ${collectionNames}` : "Removed from collection", data: { image: template.thumbnailUrl ?? template.galleryImages[0] } });
       onChange?.(false);
       onClose();
     }
@@ -1585,9 +1593,9 @@ const MASONRY_BREAKPOINTS: Array<{ min: number; columns: number }> = [
   { min: 0, columns: 2 },
   { min: 640, columns: 3 },
   { min: 1024, columns: 4 },
-  { min: 1033, columns: 6 },
-  { min: 1280, columns: 7 },
-  { min: 1536, columns: 9 },
+  { min: 1033, columns: 5 },
+  { min: 1280, columns: 6 },
+  { min: 1536, columns: 8 },
 ];
 const MASONRY_GAP = 20;
 
@@ -1755,10 +1763,10 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   const tiles: MasonryTile[] = [
     {
       key: template.id,
-      span: 2,
+      span: 4,
       render: (
-        <div className="w-full">
-          <div className="relative w-full overflow-hidden rounded-[22px] bg-black">
+        <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white min-[900px]:flex-row">
+          <div className="relative w-full overflow-hidden bg-[#f2f2f2] min-[900px]:w-1/2 min-[900px]:shrink-0">
             <section
               onDoubleClick={(event) => {
                 if ((event.target as HTMLElement).closest("button, input")) return;
@@ -1766,7 +1774,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
               }}
               className="relative w-full touch-manipulation select-none overflow-hidden"
             >
-              <DetailVideoPlayer key={template.id} template={template} active onDownload={requestDownload} downloading={downloading} onPrint={requestPrint} printing={printing} />
+              <DetailVideoPlayer key={template.id} template={template} active />
               {heartBurst ? (
                 <div className="heart-burst pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
                   <Heart fill="currentColor" strokeWidth={1.5} />
@@ -1774,56 +1782,75 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
               ) : null}
             </section>
 
-            <button type="button" aria-label="Back" onClick={onBack} className="absolute left-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] shadow-[0_2px_10px_rgba(0,0,0,0.18)] transition active:scale-95"><ArrowLeft className="h-5 w-5" /></button>
+            <button type="button" aria-label="Back" onClick={onBack} className="absolute left-4 top-4 z-20 flex h-14 w-14 items-center justify-center rounded-2xl bg-white transition active:scale-95"><ArrowLeft className="h-6 w-6" /></button>
           </div>
-          <div className="mt-2 flex items-center gap-2">
-            <button type="button" aria-label="Like" onClick={() => void interactions.toggleLike(template.id)} className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${liked ? "text-red-500" : "text-black/70"}`}><Heart className="h-6 w-6" fill={liked ? "currentColor" : "none"} /></button>
 
-            <Popover open={savePopoverOpen} onOpenChange={setSavePopoverOpen}>
-              <PopoverTrigger aria-label="Save" className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${saved ? "text-black" : "text-black/70"}`}>
-                <Bookmark className="h-6 w-6" fill={saved ? "currentColor" : "none"} strokeWidth={1.8} />
-              </PopoverTrigger>
-              <PopoverContent>
-                <SaveToCollectionOptions
-                  template={template}
-                  interactions={interactions}
-                  onClose={() => setSavePopoverOpen(false)}
-                  renderTitle={(title) => <PopoverTitle>{title}</PopoverTitle>}
-                  compact
-                />
-              </PopoverContent>
-            </Popover>
+          <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" aria-label="Like" onClick={() => void interactions.toggleLike(template.id)} className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${liked ? "text-red-500" : "text-black/70"}`}><Heart className="h-6 w-6" fill={liked ? "currentColor" : "none"} /></button>
 
-            <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
-              <PopoverTrigger aria-label="Share" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]">
-                <Share2 className="h-6 w-6" strokeWidth={1.8} />
-              </PopoverTrigger>
-              <PopoverContent>
-                <PopoverTitle>Share template</PopoverTitle>
-                <PopoverDescription className="sr-only">Choose where to share {template.name}.</PopoverDescription>
-                <ShareOptionsGrid template={template} onClose={() => setSharePopoverOpen(false)} />
-              </PopoverContent>
-            </Popover>
-
-            {template.supplyItems.length ? (
-              <Popover open={suppliesPopoverOpen} onOpenChange={setSuppliesPopoverOpen}>
-                <PopoverTrigger aria-label="Supplies" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]">
-                  <Package className="h-6 w-6" />
+              <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
+                <PopoverTrigger aria-label="Share" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]">
+                  <Share2 className="h-6 w-6" strokeWidth={1.8} />
                 </PopoverTrigger>
                 <PopoverContent>
-                  <PopoverTitle>Supplies</PopoverTitle>
-                  <div className="flex flex-wrap gap-2">
-                    {template.supplyItems.map((supply) => (
-                      <span key={supply.name} className="inline-flex items-center gap-2 rounded-lg bg-[#f2f2f2] px-3 py-2 text-sm font-medium text-black/70">
-                        <SupplyItemIcon icon={supply.icon} />{supply.name}
-                      </span>
-                    ))}
-                  </div>
+                  <PopoverTitle>Share template</PopoverTitle>
+                  <PopoverDescription className="sr-only">Choose where to share {template.name}.</PopoverDescription>
+                  <ShareOptionsGrid template={template} onClose={() => setSharePopoverOpen(false)} />
                 </PopoverContent>
               </Popover>
-            ) : null}
 
-            {template.galleryImages.length ? <button type="button" aria-label="Open image gallery" onClick={() => setGalleryTemplate(template)} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Images className="h-6 w-6" strokeWidth={1.8} /></button> : null}
+              {template.supplyItems.length ? (
+                <Popover open={suppliesPopoverOpen} onOpenChange={setSuppliesPopoverOpen}>
+                  <PopoverTrigger aria-label="Supplies" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]">
+                    <Package className="h-6 w-6" />
+                  </PopoverTrigger>
+                  <PopoverContent>
+                    <PopoverTitle>Supplies</PopoverTitle>
+                    <div className="flex flex-wrap gap-2">
+                      {template.supplyItems.map((supply) => (
+                        <span key={supply.name} className="inline-flex items-center gap-2 rounded-lg bg-[#f2f2f2] px-3 py-2 text-sm font-medium text-black/70">
+                          <SupplyItemIcon icon={supply.icon} />{supply.name}
+                        </span>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              ) : null}
+
+              {template.galleryImages.length ? <button type="button" aria-label="Open image gallery" onClick={() => setGalleryTemplate(template)} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Images className="h-6 w-6" strokeWidth={1.8} /></button> : null}
+              <Popover open={savePopoverOpen} onOpenChange={setSavePopoverOpen}>
+                <PopoverTrigger aria-label="Save" className={`ml-auto flex h-14 items-center gap-2 rounded-2xl px-6 text-sm font-semibold transition active:scale-95 ${saved ? "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]" : "bg-black text-white hover:bg-black/85"}`}>
+                  <Bookmark className="h-4 w-4" fill={saved ? "currentColor" : "none"} strokeWidth={2} />{saved ? "Saved" : "Save"}
+                </PopoverTrigger>
+                <PopoverContent>
+                  <SaveToCollectionOptions
+                    template={template}
+                    interactions={interactions}
+                    onClose={() => setSavePopoverOpen(false)}
+                    renderTitle={(title) => <PopoverTitle>{title}</PopoverTitle>}
+                    compact
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div>
+              <h1 className="text-xl font-semibold leading-tight">{template.name}</h1>
+              <DetailDescription description={template.description} tags={template.tags} />
+            </div>
+            <div className="mt-auto flex gap-2 pt-2">
+              <button type="button" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-black text-sm font-semibold text-white transition active:scale-95 hover:bg-black/85 disabled:opacity-70">
+                {downloading ? <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={2} /> : <Download className="h-5 w-5" strokeWidth={2} />}
+                {downloading ? "Downloading…" : "Download"}
+              </button>
+              {template.canPrint ? (
+                <button type="button" aria-label={printing ? "Opening print…" : "Print"} onClick={requestPrint} disabled={printing} aria-busy={printing} className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9] disabled:opacity-70">
+                  {printing ? <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={2} /> : <Printer className="h-5 w-5" strokeWidth={2} />}
+                </button>
+              ) : null}
+            </div>
+
           </div>
         </div>
       ),
@@ -1843,7 +1870,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
     <main className="fixed inset-0 flex w-screen max-w-none flex-col bg-white text-black">
       <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} />
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="w-full px-4 pb-16 pt-4 md:px-5 lg:px-6 lg:pt-6">
+        <div className="w-full px-4 pb-16 pt-2 md:px-5 lg:px-6">
           <MasonryGrid tiles={tiles} />
         </div>
       </div>
@@ -1852,6 +1879,77 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
       <div ref={detailPrintContentRef} className="hidden" aria-hidden="true" />
       {galleryTemplate ? <TemplateGallery template={galleryTemplate} onClose={() => setGalleryTemplate(null)} /> : null}
     </main>
+  );
+}
+
+const COLLAPSED_DESCRIPTION_LINES = 4;
+const DESCRIPTION_LINE_HEIGHT = 24;
+
+type DescriptionToken = { text: string; href?: string };
+type DescriptionSearch = { count: number; lo: number; hi: number; done: boolean };
+
+const tagHref = (tag: string) => `/tags/${tag.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+
+function DetailDescription({ description, tags }: { description: string; tags: string[] }) {
+  const textRef = useRef<HTMLParagraphElement | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [width, setWidth] = useState(0);
+  const tokens = useMemo<DescriptionToken[]>(() => [
+    ...description.split(/\s+/).filter(Boolean).map((text) => ({ text })),
+    ...tags.map((tag) => ({ text: `#${tag.replace(/\s+/g, "")}`, href: tagHref(tag) })),
+  ], [description, tags]);
+  const [search, setSearch] = useState<DescriptionSearch>({ count: tokens.length, lo: 0, hi: tokens.length, done: false });
+
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const next = Math.round(entries[0]?.contentRect.width ?? 0);
+      setWidth((current) => (current === next ? current : next));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Restart the fit search whenever the content or the available width change.
+  useLayoutEffect(() => {
+    setSearch({ count: tokens.length, lo: 0, hi: tokens.length, done: false });
+  }, [tokens, width]);
+
+  // Collapsed: binary-search the most words/tags that still leave "… See more" inside the line limit.
+  useLayoutEffect(() => {
+    if (expanded || search.done) return;
+    const container = textRef.current;
+    const toggle = toggleRef.current;
+    if (!container || !toggle) return;
+    const overflows = toggle.getBoundingClientRect().top - container.getBoundingClientRect().top >= DESCRIPTION_LINE_HEIGHT * COLLAPSED_DESCRIPTION_LINES;
+    const lo = overflows ? search.lo : search.count;
+    const hi = overflows ? search.count - 1 : search.hi;
+    if (lo >= hi || hi < 0) setSearch({ count: Math.max(0, lo), lo, hi: lo, done: true });
+    else setSearch({ count: Math.ceil((lo + hi) / 2), lo, hi, done: false });
+  }, [expanded, search]);
+
+  if (!tokens.length) return null;
+  const truncated = search.count < tokens.length;
+  const showToggle = expanded || !search.done || truncated;
+  const shown = expanded ? tokens : tokens.slice(0, search.count);
+  const renderToken = (token: DescriptionToken, index: number) => (
+    <Fragment key={index}>{index ? " " : ""}{token.href ? <Link href={token.href} className="text-blue-700">{token.text}</Link> : token.text}</Fragment>
+  );
+  return (
+    <div className="mt-2">
+      <p ref={textRef} className="text-[15px] leading-6 text-black/60">
+        {expanded ? (
+          <>
+            <span className="whitespace-pre-line">{description}</span>
+            {tags.map((tag) => <Fragment key={tag}>{" "}<Link href={tagHref(tag)} className="text-blue-700">#{tag.replace(/\s+/g, "")}</Link></Fragment>)}
+          </>
+        ) : shown.map(renderToken)}
+        {!expanded && truncated ? "… " : " "}
+        {showToggle ? <button ref={toggleRef} type="button" onClick={() => setExpanded((current) => !current)} className="text-[15px] font-semibold text-black">{expanded ? "See less" : "See more"}</button> : null}
+      </p>
+    </div>
   );
 }
 
@@ -2318,7 +2416,7 @@ function TemplateGallery({ template, onClose }: { template: Template; onClose: (
   );
 }
 
-function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint, printing }: { template: Template; active: boolean; onDownload: () => void; downloading: boolean; onPrint: () => void; printing: boolean }) {
+function DetailVideoPlayer({ template, active }: { template: Template; active: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const speedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2421,7 +2519,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
 
   return (
     <div
-      className={`relative w-full bg-black ${showsVisual && !aspectRatio ? "aspect-[9/16]" : ""}`}
+      className={`relative w-full bg-[#f2f2f2] ${showsVisual && !aspectRatio ? "aspect-[9/16]" : ""}`}
       style={aspectRatio ? { aspectRatio: String(aspectRatio) } : undefined}
     >
       {embed ? (
@@ -2514,20 +2612,7 @@ function DetailVideoPlayer({ template, active, onDownload, downloading, onPrint,
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur"><Play className="ml-1 h-7 w-7" fill="currentColor" /></span>
         </div>
       ) : null}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent px-4 pb-4 pt-28">
-        <p className="pr-16 text-sm font-semibold text-white">{template.name}</p>
-        <p className="mt-1 max-w-[calc(100%-4rem)] text-xs leading-4 text-white/72">{template.description}</p>
-        <div className="pointer-events-auto mb-3 mt-3 flex gap-2">
-          <button type="button" onClick={onDownload} disabled={downloading} aria-busy={downloading} className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-black shadow-[0_5px_18px_rgba(0,0,0,0.24)] transition active:scale-[0.98] disabled:opacity-70">
-            {downloading ? <LoaderCircle className="h-[18px] w-[18px] animate-spin" strokeWidth={2} /> : <Download className="h-[18px] w-[18px]" strokeWidth={2} />}
-            {downloading ? "Downloading…" : "Download"}
-          </button>
-          {template.canPrint ? (
-            <button type="button" aria-label={printing ? "Opening print…" : "Print"} onClick={onPrint} disabled={printing} aria-busy={printing} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white backdrop-blur-md transition active:scale-[0.98] disabled:opacity-70">
-              {printing ? <LoaderCircle className="h-[18px] w-[18px] animate-spin" strokeWidth={2} /> : <Printer className="h-[18px] w-[18px]" strokeWidth={2} />}
-            </button>
-          ) : null}
-        </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent px-4 pb-4 pt-16">
         {hasMedia ? <div className="pointer-events-auto flex items-center gap-3 text-xs text-white/85">
           <span className="w-8 tabular-nums">{formatTime(currentTime)}</span>
           <input

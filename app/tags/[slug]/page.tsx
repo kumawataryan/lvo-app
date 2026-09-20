@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { TagDetailScreen } from "./tag-detail-screen";
+import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { getTemplateTagBySlug, listPublishedTemplatesByTag } from "@/lib/templates/repository";
@@ -23,5 +24,5 @@ export default async function TagPage({ params, searchParams }: { params: Promis
   const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
   const purchase = user ? await getActivePurchase(supabase, user.id).catch(() => null) : null;
 
-  return <TagDetailScreen tag={tag} publishedTemplates={templates} subscribed={Boolean(purchase)} page={page} total={total} pageSize={PAGE_SIZE} />;
+  return <TagDetailScreen tag={tag} publishedTemplates={templates} subscribed={Boolean(purchase)} canAddTemplates={canUserAddTemplates(user)} page={page} total={total} pageSize={PAGE_SIZE} />;
 }

@@ -3,6 +3,7 @@ import "./globals.css";
 import { StoryPlayerProvider } from "@/components/story-player";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
+import { Toaster } from "@/components/ui/toast";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -15,7 +16,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" suppressHydrationWarning className={cn("h-full antialiased", "font-sans", geist.variable)}>
       <body suppressHydrationWarning className="h-full overflow-hidden">
-        <StoryPlayerProvider>{children}</StoryPlayerProvider>
+        <Toaster timeout={2500}><StoryPlayerProvider>{children}</StoryPlayerProvider></Toaster>
       </body>
     </html>
   );
