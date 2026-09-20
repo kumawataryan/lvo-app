@@ -4,6 +4,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["192.168.29.96", "192.168.29.167", "127.0.0.1"],
+  // Site is not public yet: ask crawlers not to index or follow anything, including non-HTML assets.
+  async headers() {
+    return [{ source: "/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }];
+  },
   images: {
     localPatterns: [
       {

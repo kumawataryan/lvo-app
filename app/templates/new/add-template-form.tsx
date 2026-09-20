@@ -4,7 +4,7 @@ import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "reac
 import { Check, ChevronDown, FileText, Link2, LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { VIDEO_LINK_ERROR, parseVideoEmbedUrl, videoEmbedPreviewSrc } from "@/lib/templates/video-embed";
 import { optimizeImageToWebp } from "@/lib/templates/image-optimize";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { AgeRangeSelector } from "@/components/age-range-selector";
@@ -295,23 +295,23 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
                     type="url"
                     value={videoUrl}
                     onChange={(event) => { setVideoUrl(event.target.value); setError(""); }}
-                    placeholder="YouTube Shorts link"
+                    placeholder="YouTube or Vimeo link"
                     className="h-12 w-full rounded-xl bg-[#f2f2f2] pl-11 pr-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2"
                   />
                 </div>
                 <p className="mt-1.5 text-xs text-black/35">
                   {videoUrl && !videoLinkEmbed
-                    ? "Paste a valid YouTube Shorts link."
+                    ? VIDEO_LINK_ERROR
                     : images.length
-                      ? "Optional · youtube.com/shorts/… or youtu.be/…"
-                      : "youtube.com/shorts/… or youtu.be/… — or add a featured image below"}
+                      ? "Optional · youtube.com/shorts/…, youtu.be/… or vimeo.com/…"
+                      : "youtube.com/shorts/…, youtu.be/… or vimeo.com/… — or add a featured image below"}
                 </p>
               </div>
               {videoLinkEmbed ? (
                 <div className="aspect-9/16 w-19 shrink-0 overflow-hidden rounded-xl bg-black">
                   <iframe
-                    key={videoLinkEmbed.id}
-                    src={`https://www.youtube-nocookie.com/embed/${videoLinkEmbed.id}?autoplay=1&mute=1&loop=1&playlist=${videoLinkEmbed.id}&controls=0&rel=0&modestbranding=1&playsinline=1`}
+                    key={`${videoLinkEmbed.provider}-${videoLinkEmbed.id}`}
+                    src={videoEmbedPreviewSrc(videoLinkEmbed)}
                     title="Video preview"
                     className="h-full w-full border-0"
                     allow="autoplay; encrypted-media"

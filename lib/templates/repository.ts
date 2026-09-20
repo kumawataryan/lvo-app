@@ -197,6 +197,27 @@ export async function listPublishedTemplatesByTag(tagSlug: string, options: { of
   return { templates: (data as unknown as TemplateRow[]).map(mapTemplate), total: count ?? 0 };
 }
 
+export type TemplateCategoryTrail = { category: TemplateCategory; parent: TemplateCategory | null };
+
+/** A category plus its parent (if any), with icons, for showing where a template lives. */
+export async function getTemplateCategoryTrail(categoryId: string): Promise<TemplateCategoryTrail | null> {
+  const supabase = createSupabaseServerClient();
+  const columns = "id, name, slug, icon, parent_id";
+  const toCategory = (row: { id: string; name: string; slug: string; icon: string | null; parent_id: string | null }): TemplateCategory => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    icon: row.icon ?? undefined,
+    parentId: row.parent_id,
+  });
+
+  const { data: category } = await supabase.from("template_categories").select(columns).eq("id", categoryId).maybeSingle();
+  if (!category) return null;
+  if (!category.parent_id) return { category: toCategory(category), parent: null };
+  const { data: parent } = await supabase.from("template_categories").select(columns).eq("id", category.parent_id).maybeSingle();
+  return { category: toCategory(category), parent: parent ? toCategory(parent) : null };
+}
+
 export async function listTemplateSubcategories(parentId: string): Promise<TemplateCategory[]> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase

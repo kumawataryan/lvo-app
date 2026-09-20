@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, forwardRef, Fragment, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, forwardRef, Fragment, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Bookmark, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download, Droplets, FastForward, FileText, Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, Images, LayoutGrid, LoaderCircle, LogOut, MoonStar, MoreHorizontal, Package, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote, Ruler, Scissors, Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download,  FastForward,  Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, LayoutGrid, LoaderCircle, Lock, LogOut, MoonStar, MoreHorizontal, Package, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote,   Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { toast } from "@/components/ui/toast";
@@ -14,8 +14,9 @@ import { EmailIcon, EmailShareButton, FacebookIcon, FacebookShareButton, Linkedi
 import { useReactToPrint } from "react-to-print";
 import { fetchPublishedTemplates } from "@/lib/templates/client";
 import { DEFAULT_TEMPLATE_CATEGORIES, type PublishedTemplate, type TemplateCategory } from "@/lib/templates/types";
-import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
-import { useYoutubePlayer } from "@/lib/youtube/use-youtube-player";
+import { embedFallbackRatio, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { useEmbedPlayer } from "@/lib/video/use-embed-player";
+import { useEmbedThumbnail } from "@/lib/video/use-embed-thumbnail";
 import { PLAN_DETAILS } from "@/lib/payments/plans";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useStoryPlayer } from "@/components/story-player";
@@ -106,10 +107,10 @@ function triggerHaptic(pattern: number | number[] = 10) {
   }
 }
 
-async function downloadTemplate(template: Template) {
+async function downloadTemplate(template: Template): Promise<boolean> {
   if (!template.hasPrintable) {
     window.alert("The printable file for this template is not available yet.");
-    return;
+    return false;
   }
 
   try {
@@ -117,11 +118,11 @@ async function downloadTemplate(template: Template) {
     const linkData = await linkResponse.json();
     if (linkResponse.status === 401) {
       window.location.href = "/login";
-      return;
+      return false;
     }
     if (!linkResponse.ok || !linkData.url) {
       window.alert(linkData.error || "The printable file could not be downloaded. Please try again.");
-      return;
+      return false;
     }
 
     const response = await fetch(linkData.url);
@@ -136,8 +137,10 @@ async function downloadTemplate(template: Template) {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    return true;
   } catch {
     window.alert("The printable file could not be downloaded. Please try again.");
+    return false;
   }
 }
 
@@ -233,6 +236,7 @@ export type Template = {
   name: string;
   slug: string;
   category: string;
+  categorySlug?: string;
   time: string;
   difficulty: "Easy" | "Medium" | "Advanced";
   supplies: string;
@@ -260,6 +264,7 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     name: template.title,
     slug: template.slug,
     category: template.category.name,
+    categorySlug: template.category.slug,
     time: `${template.durationMinutes} min`,
     difficulty,
     supplies: `${template.supplies.length} ${template.supplies.length === 1 ? "supply" : "supplies"}`,
@@ -1369,6 +1374,7 @@ export function TemplateCard({
   const [downloading, setDownloading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [subscriptionPrompt, setSubscriptionPrompt] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const hasVideo = Boolean(template.videoSrc) || Boolean(template.videoEmbedUrl);
   const liked = interactions.liked.has(template.id);
   const saved = interactions.saved.has(template.id);
@@ -1423,8 +1429,10 @@ export function TemplateCard({
       className={`template-card relative m-0 w-full cursor-pointer touch-manipulation overflow-hidden rounded-[22px] bg-[#f2eee8] p-0 ${hasVideo ? "aspect-[9/16]" : "ring-1 ring-black/10"}`}
       onContextMenu={(event) => event.preventDefault()}
       onClick={onOpenDetail}
+      onPointerEnter={(event) => { if (event.pointerType === "mouse") setHovered(true); }}
+      onPointerLeave={() => setHovered(false)}
     >
-      <ReelMedia template={template} eager={eager} />
+      <ReelMedia template={template} eager={eager} hovered={hovered} />
       {statusIcon ? (
         <span aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md">
           {statusIcon === "like" ? <Heart className="h-4 w-4" fill="currentColor" /> : <Bookmark className="h-4 w-4" fill="currentColor" />}
@@ -1705,15 +1713,20 @@ function MasonryGrid({ tiles }: { tiles: MasonryTile[] }) {
   );
 }
 
-export function TemplateDetail({ template, related, onBack, subscribed = false, canAddTemplates = false, interactions }: { template: Template; related: Template[]; onBack: () => void; subscribed?: boolean; canAddTemplates?: boolean; interactions: TemplateInteractions }) {
+export function TemplateDetail({ template, related, onBack, subscribed = false, canAddTemplates = false, interactions, categoryTrail = null }: { template: Template; related: Template[]; onBack: () => void; subscribed?: boolean; canAddTemplates?: boolean; interactions: TemplateInteractions; categoryTrail?: { category: TemplateCategory; parent: TemplateCategory | null } | null }) {
   const router = useRouter();
   const [heartBurst, setHeartBurst] = useState(false);
   const [sharePopoverOpen, setSharePopoverOpen] = useState(false);
-  const [suppliesPopoverOpen, setSuppliesPopoverOpen] = useState(false);
   const [savePopoverOpen, setSavePopoverOpen] = useState(false);
+  const [gatheredSupplies, setGatheredSupplies] = useState<Set<string>>(new Set());
   const [subscriptionPrompt, setSubscriptionPrompt] = useState(false);
   const [galleryTemplate, setGalleryTemplate] = useState<Template | null>(null);
+  // Replays a one-shot icon animation: the nonce changes on every trigger so the icon remounts.
+  const [iconAnimation, setIconAnimation] = useState<{ action: "like" | "share" | "save"; nonce: number } | null>(null);
+  const animateIcon = (action: "like" | "share" | "save") => setIconAnimation({ action, nonce: Date.now() });
+  const iconAnimationKey = (action: "like" | "share" | "save") => (iconAnimation?.action === action ? iconAnimation.nonce : 0);
   const [downloading, setDownloading] = useState(false);
+  const [downloadDone, setDownloadDone] = useState(false);
   const [printing, setPrinting] = useState(false);
   const detailPrintContentRef = useRef<HTMLDivElement>(null);
 
@@ -1736,7 +1749,14 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
     }
     if (downloading) return;
     setDownloading(true);
-    void downloadTemplate(template).finally(() => setDownloading(false));
+    void downloadTemplate(template)
+      .then((started) => {
+        if (!started) return;
+        toast.add({ title: "Download started", data: { image: template.thumbnailUrl ?? template.galleryImages[0] } });
+        setDownloadDone(true);
+        window.setTimeout(() => setDownloadDone(false), 2500);
+      })
+      .finally(() => setDownloading(false));
   };
 
   const requestPrint = () => {
@@ -1760,6 +1780,24 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
     ? related
     : [...related, ...Array.from({ length: DISCOVERY_GRID_SIZE - related.length }, () => null)];
 
+  const photos = template.galleryImages;
+  const heroMedia = (
+    <section
+      onDoubleClick={(event) => {
+        if ((event.target as HTMLElement).closest("button, input")) return;
+        handleDoubleTap();
+      }}
+      className="relative w-full touch-manipulation select-none overflow-hidden"
+    >
+      <DetailVideoPlayer key={template.id} template={template} active />
+      {heartBurst ? (
+        <div className="heart-burst pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
+          <Heart fill="currentColor" strokeWidth={1.5} />
+        </div>
+      ) : null}
+    </section>
+  );
+
   const tiles: MasonryTile[] = [
     {
       key: template.id,
@@ -1767,31 +1805,20 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
       render: (
         <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white min-[900px]:flex-row">
           <div className="relative w-full overflow-hidden bg-[#f2f2f2] min-[900px]:w-1/2 min-[900px]:shrink-0">
-            <section
-              onDoubleClick={(event) => {
-                if ((event.target as HTMLElement).closest("button, input")) return;
-                handleDoubleTap();
-              }}
-              className="relative w-full touch-manipulation select-none overflow-hidden"
-            >
-              <DetailVideoPlayer key={template.id} template={template} active />
-              {heartBurst ? (
-                <div className="heart-burst pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
-                  <Heart fill="currentColor" strokeWidth={1.5} />
-                </div>
-              ) : null}
-            </section>
+            {heroMedia}
 
             <button type="button" aria-label="Back" onClick={onBack} className="absolute left-4 top-4 z-20 flex h-14 w-14 items-center justify-center rounded-2xl bg-white transition active:scale-95"><ArrowLeft className="h-6 w-6" /></button>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" aria-label="Like" onClick={() => void interactions.toggleLike(template.id)} className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95 hover:bg-[#e9e9e9] ${liked ? "text-red-500" : "text-black/70"}`}><Heart className="h-6 w-6" fill={liked ? "currentColor" : "none"} /></button>
+          <div className="flex min-w-0 flex-1 flex-col gap-6 p-4">
+            <div className="grid auto-cols-fr grid-flow-col gap-2">
+              <button type="button" aria-label="Like" onClick={() => { animateIcon("like"); void interactions.toggleLike(template.id); }} className={`group flex h-20 min-w-0 items-center justify-center rounded-2xl transition active:scale-[0.98] bg-[#f2f2f2] hover:bg-[#e9e9e9] ${liked ? "text-red-500" : "text-black/75"}`}>
+                <Heart key={iconAnimationKey("like")} className={`h-9 w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "like" && liked ? "animate-icon-pop" : ""}`} fill={liked ? "currentColor" : "none"} strokeWidth={1.7} />
+              </button>
 
               <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
-                <PopoverTrigger aria-label="Share" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]">
-                  <Share2 className="h-6 w-6" strokeWidth={1.8} />
+                <PopoverTrigger aria-label="Share" onClick={() => animateIcon("share")} className="group flex h-20 min-w-0 items-center justify-center rounded-2xl transition active:scale-[0.98] bg-[#f2f2f2] text-black/75 hover:bg-[#e9e9e9]">
+                  <Share2 key={iconAnimationKey("share")} className={`h-9 w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "share" ? "animate-icon-wiggle" : ""}`} strokeWidth={1.7} />
                 </PopoverTrigger>
                 <PopoverContent>
                   <PopoverTitle>Share template</PopoverTitle>
@@ -1800,34 +1827,17 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
                 </PopoverContent>
               </Popover>
 
-              {template.supplyItems.length ? (
-                <Popover open={suppliesPopoverOpen} onOpenChange={setSuppliesPopoverOpen}>
-                  <PopoverTrigger aria-label="Supplies" className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]">
-                    <Package className="h-6 w-6" />
-                  </PopoverTrigger>
-                  <PopoverContent>
-                    <PopoverTitle>Supplies</PopoverTitle>
-                    <div className="flex flex-wrap gap-2">
-                      {template.supplyItems.map((supply) => (
-                        <span key={supply.name} className="inline-flex items-center gap-2 rounded-lg bg-[#f2f2f2] px-3 py-2 text-sm font-medium text-black/70">
-                          <SupplyItemIcon icon={supply.icon} />{supply.name}
-                        </span>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              ) : null}
 
-              {template.galleryImages.length ? <button type="button" aria-label="Open image gallery" onClick={() => setGalleryTemplate(template)} className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9]"><Images className="h-6 w-6" strokeWidth={1.8} /></button> : null}
               <Popover open={savePopoverOpen} onOpenChange={setSavePopoverOpen}>
-                <PopoverTrigger aria-label="Save" className={`ml-auto flex h-14 items-center gap-2 rounded-2xl px-6 text-sm font-semibold transition active:scale-95 ${saved ? "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]" : "bg-black text-white hover:bg-black/85"}`}>
-                  <Bookmark className="h-4 w-4" fill={saved ? "currentColor" : "none"} strokeWidth={2} />{saved ? "Saved" : "Save"}
+                <PopoverTrigger aria-label="Save" className={`group flex h-20 min-w-0 items-center justify-center rounded-2xl transition active:scale-[0.98] ${saved ? "bg-[#e9e9e9] text-black hover:bg-[#dedede]" : "bg-[#f2f2f2] text-black/75 hover:bg-[#e9e9e9]"}`}>
+                  <Bookmark key={iconAnimationKey("save")} className={`h-9 w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "save" && saved ? "animate-icon-pop" : ""}`} fill={saved ? "currentColor" : "none"} strokeWidth={1.7} />
                 </PopoverTrigger>
                 <PopoverContent>
                   <SaveToCollectionOptions
                     template={template}
                     interactions={interactions}
                     onClose={() => setSavePopoverOpen(false)}
+                    onChange={(active) => { if (active) animateIcon("save"); }}
                     renderTitle={(title) => <PopoverTitle>{title}</PopoverTitle>}
                     compact
                   />
@@ -1835,22 +1845,79 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
               </Popover>
             </div>
 
-            <div>
-              <h1 className="text-xl font-semibold leading-tight">{template.name}</h1>
-              <DetailDescription description={template.description} tags={template.tags} />
-            </div>
-            <div className="mt-auto flex gap-2 pt-2">
-              <button type="button" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-black text-sm font-semibold text-white transition active:scale-95 hover:bg-black/85 disabled:opacity-70">
-                {downloading ? <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={2} /> : <Download className="h-5 w-5" strokeWidth={2} />}
-                {downloading ? "Downloading…" : "Download"}
-              </button>
-              {template.canPrint ? (
-                <button type="button" aria-label={printing ? "Opening print…" : "Print"} onClick={requestPrint} disabled={printing} aria-busy={printing} className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black/70 transition active:scale-95 hover:bg-[#e9e9e9] disabled:opacity-70">
-                  {printing ? <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={2} /> : <Printer className="h-5 w-5" strokeWidth={2} />}
+            <div className="flex flex-col gap-5">
+              <div>
+                {template.categorySlug ? (
+                  <nav aria-label="Category" className="mb-3 inline-flex h-9 items-stretch divide-x divide-white/20 overflow-hidden rounded-xl bg-black text-sm font-semibold text-white">
+                    {categoryTrail?.parent ? (
+                      <Link href={`/categories/${categoryTrail.parent.slug}`} aria-label={`Browse ${categoryTrail.parent.name}`} className="inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25">
+                        <CategoryIcon icon={categoryTrail.parent.icon} className="h-4 w-4 shrink-0" />{categoryTrail.parent.name}
+                      </Link>
+                    ) : null}
+                    <Link href={`/categories/${template.categorySlug}`} aria-label={`Browse ${template.category}`} className={`inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25 ${categoryTrail?.parent ? "text-white/85" : ""}`}>
+                      {categoryTrail?.parent ? null : <CategoryIcon icon={categoryTrail?.category.icon} className="h-4 w-4 shrink-0" />}{template.category}
+                    </Link>
+                  </nav>
+                ) : null}
+                <h1 className="text-balance text-[27px] font-semibold leading-tight tracking-tight">{template.name}</h1>
+                <DetailDescription description={template.description} tags={template.tags} />
+              </div>
+              {photos.length ? (
+                <button type="button" aria-label={`View ${photos.length} ${photos.length === 1 ? "photo" : "photos"}`} onClick={() => setGalleryTemplate(template)} className="group flex w-fit items-center py-1 pl-1 pr-2 transition active:scale-95">
+                  {photos.slice(0, 3).map((imageSrc, index, shown) => (
+                    <span key={`${imageSrc}-${index}`} className={`relative block h-14 w-14 overflow-hidden rounded-xl border-2 border-white bg-[#f2f2f2] shadow-[0_0_0_1px_rgba(0,0,0,0.12)] transition group-hover:rotate-0 ${index ? "-ml-10" : ""} ${index % 2 ? "rotate-6" : "-rotate-3"}`} style={{ zIndex: shown.length - index }}>
+                      <Image src={imageSrc} alt="" fill sizes="56px" className="object-cover" />
+                      {index === 0 && photos.length > 1 ? <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-sm font-bold tabular-nums text-white">{photos.length}+</span> : null}
+                    </span>
+                  ))}
                 </button>
+              ) : null}
+              {template.supplyItems.length ? (
+                <section className="overflow-hidden rounded-2xl border border-black/10">
+                  <h2 className="flex items-center gap-2 border-b border-black/10 px-4 py-2.5 text-[15px] font-semibold">
+                    <Package className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />What you’ll need
+                  </h2>
+                  <table className="w-full border-collapse text-sm">
+                    <tbody className="divide-y divide-black/[0.08]">
+                      {template.supplyItems.map((supply, index) => {
+                        const ready = gatheredSupplies.has(supply.name);
+                        const toggle = () => setGatheredSupplies((current) => {
+                          const next = new Set(current);
+                          if (next.has(supply.name)) next.delete(supply.name);
+                          else next.add(supply.name);
+                          return next;
+                        });
+                        return (
+                          <tr key={supply.name} onClick={toggle} className="cursor-pointer transition hover:bg-[#f7f7f7] active:bg-[#f2f2f2]">
+                            <td className="w-9 border-r border-black/[0.08] py-1.5 text-center">
+                              <button type="button" role="checkbox" aria-checked={ready} aria-label={`${supply.name}, item ${index + 1}`} className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition ${ready ? "bg-black text-white" : "bg-[#f2f2f2] text-black/45"}`}>
+                                {ready ? <Check className="h-3 w-3" strokeWidth={3} /> : index + 1}
+                              </button>
+                            </td>
+                            <td className={`px-3 py-1.5 text-sm transition ${ready ? "text-black/35 line-through" : "text-black/80"}`}>{supply.name}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </section>
               ) : null}
             </div>
 
+            <div className="mt-auto flex flex-col gap-2">
+              <div className="grid auto-cols-fr grid-flow-col gap-2">
+                <button type="button" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="group flex h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-black text-[13px] font-semibold text-white shadow-[0_6px_16px_rgba(0,0,0,0.18)] transition active:scale-95 hover:bg-black/85 disabled:opacity-70">
+                  {downloading ? <LoaderCircle className="h-8 w-8 animate-spin" strokeWidth={1.8} /> : downloadDone ? <Check className="h-8 w-8 animate-icon-pop" strokeWidth={2.5} /> : canDownload ? <Download className="h-8 w-8 animate-icon-bob" strokeWidth={1.8} /> : <Lock className="h-8 w-8" strokeWidth={1.8} />}
+                  {downloading ? "Getting it ready…" : downloadDone ? "Done!" : "Download"}
+                </button>
+                {template.canPrint ? (
+                  <button type="button" onClick={requestPrint} disabled={printing} aria-busy={printing} className="group flex h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-[#f2f2f2] text-[13px] font-semibold text-black transition active:scale-95 hover:bg-[#e9e9e9] disabled:opacity-70">
+                    {printing ? <LoaderCircle className="h-8 w-8 animate-spin" strokeWidth={1.8} /> : canDownload ? <Printer className="h-8 w-8 transition group-hover:scale-110" strokeWidth={1.8} /> : <Lock className="h-8 w-8" strokeWidth={1.8} />}
+                    {printing ? "Getting it ready…" : "Print"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
       ),
@@ -1882,10 +1949,10 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   );
 }
 
-const COLLAPSED_DESCRIPTION_LINES = 4;
+const COLLAPSED_DESCRIPTION_LINES = 3;
+const COLLAPSED_TAG_COUNT = 4;
 const DESCRIPTION_LINE_HEIGHT = 24;
 
-type DescriptionToken = { text: string; href?: string };
 type DescriptionSearch = { count: number; lo: number; hi: number; done: boolean };
 
 const tagHref = (tag: string) => `/tags/${tag.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
@@ -1894,11 +1961,9 @@ function DetailDescription({ description, tags }: { description: string; tags: s
   const textRef = useRef<HTMLParagraphElement | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [tagsExpanded, setTagsExpanded] = useState(false);
   const [width, setWidth] = useState(0);
-  const tokens = useMemo<DescriptionToken[]>(() => [
-    ...description.split(/\s+/).filter(Boolean).map((text) => ({ text })),
-    ...tags.map((tag) => ({ text: `#${tag.replace(/\s+/g, "")}`, href: tagHref(tag) })),
-  ], [description, tags]);
+  const tokens = useMemo(() => description.split(/\s+/).filter(Boolean), [description]);
   const [search, setSearch] = useState<DescriptionSearch>({ count: tokens.length, lo: 0, hi: tokens.length, done: false });
 
   useEffect(() => {
@@ -1930,32 +1995,30 @@ function DetailDescription({ description, tags }: { description: string; tags: s
     else setSearch({ count: Math.ceil((lo + hi) / 2), lo, hi, done: false });
   }, [expanded, search]);
 
-  if (!tokens.length) return null;
+  if (!tokens.length && !tags.length) return null;
   const truncated = search.count < tokens.length;
-  const showToggle = expanded || !search.done || truncated;
-  const shown = expanded ? tokens : tokens.slice(0, search.count);
-  const renderToken = (token: DescriptionToken, index: number) => (
-    <Fragment key={index}>{index ? " " : ""}{token.href ? <Link href={token.href} className="text-blue-700">{token.text}</Link> : token.text}</Fragment>
-  );
+  const showToggle = tokens.length > 0 && (expanded || !search.done || truncated);
   return (
-    <div className="mt-2">
-      <p ref={textRef} className="text-[15px] leading-6 text-black/60">
-        {expanded ? (
-          <>
-            <span className="whitespace-pre-line">{description}</span>
-            {tags.map((tag) => <Fragment key={tag}>{" "}<Link href={tagHref(tag)} className="text-blue-700">#{tag.replace(/\s+/g, "")}</Link></Fragment>)}
-          </>
-        ) : shown.map(renderToken)}
-        {!expanded && truncated ? "… " : " "}
-        {showToggle ? <button ref={toggleRef} type="button" onClick={() => setExpanded((current) => !current)} className="text-[15px] font-semibold text-black">{expanded ? "See less" : "See more"}</button> : null}
-      </p>
+    <div className="mt-1.5">
+      {tokens.length ? (
+        <p ref={textRef} className="text-base leading-6 text-black/65">
+          {expanded ? <span className="whitespace-pre-line">{description}</span> : tokens.slice(0, search.count).join(" ")}
+          {!expanded && truncated ? "… " : " "}
+          {showToggle ? <button ref={toggleRef} type="button" onClick={() => setExpanded((current) => !current)} className="text-base font-semibold text-black">{expanded ? "Show less" : "Read more"}</button> : null}
+        </p>
+      ) : null}
+      {tags.length ? (
+        <div className={`flex flex-wrap gap-2 ${tokens.length ? "mt-4" : ""}`}>
+          {(tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT)).map((tag) => <Link key={tag} href={tagHref(tag)} className="rounded-lg bg-[#f2f2f2] px-2.5 py-1 text-xs font-medium text-black/70 transition hover:bg-[#e9e9e9]">#{tag.replace(/\s+/g, "")}</Link>)}
+          {tags.length > COLLAPSED_TAG_COUNT ? (
+            <button type="button" onClick={() => setTagsExpanded((current) => !current)} className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-semibold text-black transition hover:bg-[#f2f2f2]">
+              {tagsExpanded ? "Show less" : `+${tags.length - COLLAPSED_TAG_COUNT} more`}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
-}
-
-function SupplyItemIcon({ icon }: { icon: string | null }) {
-  const Icon = icon === "scissors" ? Scissors : icon === "droplets" ? Droplets : icon === "pencil" ? Pencil : icon === "ruler" ? Ruler : FileText;
-  return <Icon className="h-4 w-4 text-black/45" aria-hidden="true" />;
 }
 
 function ShareOptionsGrid({ template, onClose }: { template: Template; onClose: () => void }) {
@@ -2436,9 +2499,11 @@ function DetailVideoPlayer({ template, active }: { template: Template; active: b
   const previewImage = template.thumbnailUrl ?? template.galleryImages[0];
   const showsVisual = hasMedia || Boolean(previewImage);
 
-  const youtube = useYoutubePlayer(youtubeContainerRef, embed?.id ?? "", muted);
+  const youtube = useEmbedPlayer(youtubeContainerRef, embed, muted);
   const playing = embed ? youtube.playing : videoPlaying;
   const duration = embed ? youtube.duration : videoDuration;
+  // Embeds report their real ratio once loaded; until then guess from the link type.
+  const frameRatio = aspectRatio ?? (embed ? youtube.aspectRatio ?? embedFallbackRatio(embed) : null);
   const currentTime = embed ? youtubeCurrentTime : videoCurrentTime;
 
   useEffect(() => {
@@ -2519,8 +2584,8 @@ function DetailVideoPlayer({ template, active }: { template: Template; active: b
 
   return (
     <div
-      className={`relative w-full bg-[#f2f2f2] ${showsVisual && !aspectRatio ? "aspect-[9/16]" : ""}`}
-      style={aspectRatio ? { aspectRatio: String(aspectRatio) } : undefined}
+      className={`relative w-full bg-[#f2f2f2] ${showsVisual && !frameRatio ? "aspect-[9/16]" : ""}`}
+      style={frameRatio ? { aspectRatio: String(frameRatio) } : undefined}
     >
       {embed ? (
         <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" />
@@ -2649,7 +2714,21 @@ function DetailVideoPlayer({ template, active }: { template: Template; active: b
   );
 }
 
-function ReelMedia({ template, eager = false }: { template: Template; eager?: boolean }) {
+function formatVideoDuration(totalSeconds: number) {
+  const seconds = Math.round(totalSeconds);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = String(seconds % 60).padStart(2, "0");
+  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${rest}` : `${minutes}:${rest}`;
+}
+
+function subscribeToHoverCapability(onChange: () => void) {
+  const query = window.matchMedia("(hover: hover)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function ReelMedia({ template, eager = false, hovered = false }: { template: Template; eager?: boolean; hovered?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
@@ -2658,8 +2737,13 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
   const videoEmbedUrl = template.videoEmbedUrl;
   const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
   const hasVideo = Boolean(embed) || Boolean(videoSrc);
-  const { play: youtubePlay, pause: youtubePause, ready: youtubeReady, playing: youtubeStarted } = useYoutubePlayer(youtubeContainerRef, shouldLoad ? embed?.id ?? "" : "", true, true);
+  const { play: youtubePlay, pause: youtubePause, ready: youtubeReady, playing: youtubeStarted, duration: youtubeDuration } = useEmbedPlayer(youtubeContainerRef, shouldLoad ? embed : null, true, true);
   const intersectingRef = useRef(false);
+  const embedThumbnail = useEmbedThumbnail(embed, shouldLoad && !(template.thumbnailUrl ?? template.galleryImages[0]));
+  const [inView, setInView] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const durationSeconds = embed ? youtubeDuration : videoDuration;
+  const canHover = useSyncExternalStore(subscribeToHoverCapability, () => window.matchMedia("(hover: hover)").matches, () => true);
 
   useEffect(() => {
     const target = containerRef.current;
@@ -2667,28 +2751,25 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
 
     const observer = new IntersectionObserver(([entry]) => {
       intersectingRef.current = entry.isIntersecting;
+      setInView(entry.isIntersecting);
       if (entry.isIntersecting) setShouldLoad(true);
-      if (embed) {
-        if (entry.isIntersecting) youtubePlay();
-        else youtubePause();
-        return;
-      }
+      if (embed) return;
       if (entry.isIntersecting) videoRef.current?.play().catch(() => undefined);
       else videoRef.current?.pause();
     }, { rootMargin: "240px 0px", threshold: 0.01 });
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [embed, hasVideo, youtubePlay, youtubePause]);
+  }, [embed, hasVideo]);
 
-  // The observer above only reports intersection changes; if the card was
-  // already visible before the YouTube player finished loading, that first
-  // callback fires as a no-op. Re-sync once the player becomes ready.
+  // YouTube previews play only while hovered on devices that can hover; touch
+  // devices have no hover, so they keep playing while the card is in view.
+  const youtubeShouldPlay = canHover ? hovered && inView : inView;
   useEffect(() => {
     if (!embed || !youtubeReady) return;
-    if (intersectingRef.current) youtubePlay();
+    if (youtubeShouldPlay) youtubePlay();
     else youtubePause();
-  }, [embed, youtubeReady, youtubePlay, youtubePause]);
+  }, [embed, youtubeReady, youtubeShouldPlay, youtubePlay, youtubePause]);
 
   const previewImage = template.thumbnailUrl ?? template.galleryImages[0];
 
@@ -2715,12 +2796,12 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
       {previewImage ? <Image src={previewImage} alt="" fill sizes="(max-width: 639px) 50vw, (max-width: 767px) 33vw, (max-width: 1023px) 25vw, (max-width: 1279px) 17vw, 12vw" loading={eager ? "eager" : "lazy"} className="object-cover" /> : null}
       {embed ? (
         <>
-          {shouldLoad ? <img
-            src={`https://i.ytimg.com/vi/${embed.id}/hqdefault.jpg`}
+          {embedThumbnail && !previewImage ? <img
+            src={embedThumbnail}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
           /> : null}
-          <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" style={{ opacity: youtubeStarted ? 1 : 0 }} />
+          <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" style={{ opacity: youtubeStarted && (!previewImage || !canHover || hovered) ? 1 : 0 }} />
         </>
       ) : videoSrc ? (
         <video
@@ -2733,7 +2814,11 @@ function ReelMedia({ template, eager = false }: { template: Template; eager?: bo
           preload={eager ? "auto" : "metadata"}
           disablePictureInPicture
           onCanPlay={(event) => { if (intersectingRef.current) event.currentTarget.play().catch(() => undefined); }}
+          onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)}
         />
+      ) : null}
+      {!hovered && Number.isFinite(durationSeconds) && durationSeconds > 0 ? (
+        <span className="pointer-events-none absolute left-2.5 top-2.5 z-10 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold tabular-nums text-black">{formatVideoDuration(durationSeconds)}</span>
       ) : null}
     </div>
   );
@@ -2814,7 +2899,7 @@ function Motif({ template }: { template: Template }) {
   );
 }
 
-function CategoryIcon({ icon }: { icon?: string }) {
+function CategoryIcon({ icon, className = "h-5 w-5 shrink-0" }: { icon?: string; className?: string }) {
   const Icon = {
     hammer: Hammer,
     palette: Palette,
@@ -2825,7 +2910,7 @@ function CategoryIcon({ icon }: { icon?: string }) {
     "book-open": BookOpen,
   }[icon ?? ""] ?? Shapes;
 
-  return <Icon aria-hidden="true" className="h-5 w-5 shrink-0" strokeWidth={1.7} />;
+  return <Icon aria-hidden="true" className={className} strokeWidth={1.7} />;
 }
 
 function SubscribeIcon() {

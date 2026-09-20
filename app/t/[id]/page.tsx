@@ -5,7 +5,7 @@ import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { hasActiveSubscription } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
-import { getPublishedTemplateById, listPublishedTemplates } from "@/lib/templates/repository";
+import { getPublishedTemplateById, getTemplateCategoryTrail, listPublishedTemplates } from "@/lib/templates/repository";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +26,7 @@ export default async function TemplatePage({ params }: { params: Promise<{ id: s
 
   const relatedResult = await listPublishedTemplates({ category: template.category.slug, limit: RELATED_TEMPLATE_LIMIT }).catch(() => []);
   const related = relatedResult.filter((item) => item.id !== template.id);
+  const categoryTrail = await getTemplateCategoryTrail(template.category.id).catch(() => null);
 
-  return <TemplateDetailClient subscribed={subscribed} canAddTemplates={canUserAddTemplates(user)} initialTemplate={template} initialRelated={related} />;
+  return <TemplateDetailClient subscribed={subscribed} canAddTemplates={canUserAddTemplates(user)} initialTemplate={template} initialRelated={related} categoryTrail={categoryTrail} />;
 }

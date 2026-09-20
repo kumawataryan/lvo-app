@@ -95,7 +95,7 @@ function resolveRow(index: number, raw: CsvRecord, categories: Category[], fileM
   const isFree = ["true", "yes", "1", "y"].includes(isFreeRaw);
 
   const videoUrl = (raw.videourl ?? "").trim();
-  if (videoUrl && !parseVideoEmbedUrl(videoUrl)) errors.push("Video URL must be a valid YouTube Shorts link.");
+  if (videoUrl && !parseVideoEmbedUrl(videoUrl)) errors.push("Video URL must be a valid YouTube or Vimeo link.");
 
   const featuredImageName = (raw.featuredimage ?? "").trim();
   let featuredImageFile: File | null = null;

@@ -1,6 +1,6 @@
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
-import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 
 type CreateTemplateBody = {
   title?: unknown;
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
   if (videoPath && videoUrl) return Response.json({ error: "Provide either a video upload or a video link, not both." }, { status: 400 });
   if (!videoPath && !videoUrl && !thumbnailPath && !galleryPaths.length) return Response.json({ error: "Add a template video or a featured image." }, { status: 400 });
   if (videoPath && !videoPath.startsWith(dropboxOwnedPrefix)) return Response.json({ error: "Upload a video." }, { status: 400 });
-  if (videoUrl && !parseVideoEmbedUrl(videoUrl)) return Response.json({ error: "Paste a valid YouTube Shorts link." }, { status: 400 });
+  if (videoUrl && !parseVideoEmbedUrl(videoUrl)) return Response.json({ error: VIDEO_LINK_ERROR }, { status: 400 });
   if (thumbnailPath && !thumbnailPath.startsWith(mediaOwnedPrefix)) return Response.json({ error: "Upload a featured image." }, { status: 400 });
   if (!printablePath.startsWith(dropboxOwnedPrefix)) return Response.json({ error: "Upload a printable PDF." }, { status: 400 });
   if (galleryPaths.some((path) => !path.startsWith(mediaOwnedPrefix))) return Response.json({ error: "Invalid gallery file." }, { status: 400 });

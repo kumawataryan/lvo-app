@@ -1,7 +1,7 @@
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { deleteDropboxFile } from "@/lib/dropbox/server";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 
 type UpdateTemplateBody = {
   title?: unknown;
@@ -92,7 +92,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) return Response.json({ error: "Enter a valid duration." }, { status: 400 });
   if (!DIFFICULTIES.has(difficulty)) return Response.json({ error: "Choose a difficulty." }, { status: 400 });
   if (!videoUrl && !thumbnailPath && !galleryPaths.length) return Response.json({ error: "Add a template video or a featured image." }, { status: 400 });
-  if (videoUrl && !parseVideoEmbedUrl(videoUrl)) return Response.json({ error: "Paste a valid YouTube Shorts link." }, { status: 400 });
+  if (videoUrl && !parseVideoEmbedUrl(videoUrl)) return Response.json({ error: VIDEO_LINK_ERROR }, { status: 400 });
   if (thumbnailPath && !isOwnedMediaPath(thumbnailPath)) return Response.json({ error: "Upload a featured image." }, { status: 400 });
   if (!printablePath.startsWith(dropboxOwnedPrefix)) return Response.json({ error: "Upload a printable PDF." }, { status: 400 });
   if (galleryPaths.some((path) => !isOwnedMediaPath(path))) return Response.json({ error: "Invalid gallery file." }, { status: 400 });

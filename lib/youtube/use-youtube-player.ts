@@ -7,6 +7,8 @@ export type YoutubePlayerHandle = {
   ready: boolean;
   playing: boolean;
   duration: number;
+  /** Real video width/height once the provider reports it; null when unknown. */
+  aspectRatio: number | null;
   play: () => void;
   pause: () => void;
   setPlaybackRate: (rate: number) => void;
@@ -31,6 +33,7 @@ export function useYoutubePlayer(
     if (!container || !videoId) return;
 
     let destroyed = false;
+    const pollTimers: number[] = [];
     const mountNode = document.createElement("div");
     container.appendChild(mountNode);
 
@@ -56,6 +59,15 @@ export function useYoutubePlayer(
               : "position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;";
             playerRef.current = player;
             setReady(true);
+            // getDuration() is often 0 until metadata arrives, so poll briefly
+            // to surface the length before playback starts (e.g. card badges).
+            let attempts = 0;
+            const poll = window.setInterval(() => {
+              const value = destroyed ? 0 : player.getDuration();
+              if (value > 0) setDuration(value);
+              if (destroyed || value > 0 || ++attempts >= 20) window.clearInterval(poll);
+            }, 400);
+            pollTimers.push(poll);
           },
           onStateChange: (event) => {
             if (event.data === 1) {
@@ -80,6 +92,7 @@ export function useYoutubePlayer(
 
     return () => {
       destroyed = true;
+      pollTimers.forEach((timer) => window.clearInterval(timer));
       playerRef.current?.destroy();
       playerRef.current = null;
       if (mountNode.parentNode === container) container.removeChild(mountNode);
@@ -102,7 +115,7 @@ export function useYoutubePlayer(
   const getCurrentTime = useCallback(() => playerRef.current?.getCurrentTime() ?? 0, []);
 
   return useMemo(
-    () => ({ ready, playing, duration, play, pause, setPlaybackRate, seekTo, getCurrentTime }),
+    () => ({ ready, playing, duration, aspectRatio: null, play, pause, setPlaybackRate, seekTo, getCurrentTime }),
     [ready, playing, duration, play, pause, setPlaybackRate, seekTo, getCurrentTime],
   );
 }
