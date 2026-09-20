@@ -92,7 +92,7 @@ export function OnboardingFlow({ initialFamily }: { initialFamily: FamilyOnboard
     <main className="fixed inset-0 overflow-y-auto bg-[#f4f3f0] text-black">
       <div className="flex min-h-dvh w-full flex-col bg-white px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
         <header className="flex h-11 items-center justify-between">
-          {screen === "parent" ? <Image src="/lvo.jpg" alt="Lovely Vibes Only" width={44} height={44} priority className="h-11 w-11 rounded-xl object-cover" /> : <button type="button" aria-label="Go back" disabled={saving} onClick={back} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] active:scale-95"><ArrowLeft className="h-5 w-5" /></button>}
+          {screen === "parent" ? <Image src="/lovely-logo.png" alt="Lovely" width={400} height={126} priority className="h-7 w-auto" /> : <button type="button" aria-label="Go back" disabled={saving} onClick={back} className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f2f2f2] active:scale-95"><ArrowLeft className="h-5 w-5" /></button>}
           {onboarding ? <div className="flex gap-1" aria-label={`Step ${screen === "parent" ? 1 : 2} of 2`}><span className="h-1 w-5 rounded-full bg-black" /><span className={`h-1 w-5 rounded-full ${screen === "onboarding" ? "bg-black" : "bg-black/12"}`} /></div> : null}
         </header>
 

@@ -575,7 +575,7 @@ export function BrowseTabContent() {
           <button
             type="button"
             onClick={() => router.push("/craft-classes")}
-            className="flex h-14 items-center justify-between rounded-2xl bg-black px-4 text-white transition active:scale-[0.98]"
+            className="flex h-14 items-center justify-between rounded-2xl bg-brand px-4 text-white transition hover:bg-brand/90 active:scale-[0.98]"
           >
             <span className="flex items-center gap-2">
               <CirclePlay aria-hidden="true" className="h-5 w-5 text-white" strokeWidth={2.5} />
@@ -586,7 +586,7 @@ export function BrowseTabContent() {
           <button
             type="button"
             onClick={() => router.push("/stories")}
-            className="flex h-14 items-center justify-between rounded-2xl bg-black px-4 text-white transition active:scale-[0.98]"
+            className="flex h-14 items-center justify-between rounded-2xl bg-brand px-4 text-white transition hover:bg-brand/90 active:scale-[0.98]"
           >
             <span className="flex items-center gap-2">
               <BookOpen aria-hidden="true" className="h-5 w-5 text-white" strokeWidth={2.25} />
@@ -844,7 +844,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
   ];
 
   return (
-    <header className={`shrink-0 px-3 pb-3 pt-3 md:px-4 lg:px-5 ${dark ? "bg-black text-white" : "bg-white text-black"}`}>
+    <header className={`shrink-0 px-3 pb-3 pt-3 md:px-4 lg:px-5 ${dark ? "bg-brand text-white" : "bg-white text-black"}`}>
       <div className="flex items-center gap-3">
         <div className="flex shrink-0 items-center gap-2">
           <Link
@@ -857,20 +857,20 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
             }}
             className="transition active:scale-95"
           >
-            <Image src="/lvo.jpg" alt="Lovely Vibes Only logo" width={56} height={56} className={`h-14 w-14 rounded-2xl border-2 object-cover ${dark ? "border-white" : "border-black"}`} priority />
+            <Image src="/lovely-logo.png" alt="Lovely" width={400} height={126} priority className="h-8 w-auto" />
           </Link>
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {canAddTemplates ? (
             <button
               type="button"
               aria-label="Add template"
               onClick={() => router.push("/templates/new")}
-              className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black transition active:scale-95 hover:bg-[#e9e9e9]"
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black transition active:scale-95 hover:bg-[#e9e9e9]"
             >
               <Plus className="h-5 w-5" strokeWidth={2.25} />
             </button>
           ) : null}
-        </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
           {onTabChange ? (
             <div className={`shrink-0 items-center gap-2 ${alwaysShowNav ? "flex" : "hidden min-[1033px]:flex"}`}>
               {desktopNavItems.filter(({ tab }) => tab !== "profile").map(({ tab, label, icon: Icon }) => (
@@ -880,7 +880,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
                   aria-label={label}
                   aria-current={activeTab === tab ? "page" : undefined}
                   onClick={() => onTabChange(tab)}
-                  className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-black text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
+                  className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
                 >
                   <Icon className="h-5 w-5" strokeWidth={1.8} fill={activeTab === tab ? "currentColor" : "none"} />
                 </button>
@@ -888,7 +888,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
             </div>
           ) : null}
           {subscribed ? null : (
-            <button type="button" aria-label="Subscribe" onClick={() => router.push("/subscription")} className={`flex h-14 items-center gap-1.5 rounded-2xl px-4 text-xs font-medium shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95 ${dark ? "bg-white text-black" : "bg-black text-white"}`}>
+            <button type="button" aria-label="Subscribe" onClick={() => router.push("/subscription")} className={`flex h-14 items-center gap-1.5 rounded-2xl px-4 text-xs font-medium shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95 ${dark ? "bg-white text-black" : "bg-brand text-white"}`}>
               <SubscribeIcon />
               <span className="flex flex-col items-start leading-tight">
                 <span>Subscribe</span>
@@ -905,7 +905,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
                   aria-label={label}
                   aria-current={activeTab === tab ? "page" : undefined}
                   onClick={() => onTabChange(tab)}
-                  className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-black text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
+                  className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
                 >
                   <Icon className="h-5 w-5" strokeWidth={1.8} fill={activeTab === tab ? "currentColor" : "none"} />
                 </button>
@@ -922,7 +922,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
               type="button"
               aria-pressed={activeCategory === category.name}
               onClick={() => onCategoryChange(category.name)}
-              className={`flex min-w-0 items-center gap-2 rounded-2xl p-2.5 text-left transition active:scale-[0.98] ${activeCategory === category.name ? "bg-black text-white" : "bg-[#f2f2f2] text-black"}`}
+              className={`flex min-w-0 items-center gap-2 rounded-2xl p-2.5 text-left transition active:scale-[0.98] ${activeCategory === category.name ? "bg-brand text-white" : "bg-[#f2f2f2] text-black"}`}
             >
               <span className="flex h-9 w-7 shrink-0 items-center justify-center">
                 <CategoryIcon icon={category.icon} />
@@ -1147,18 +1147,8 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
               }}
               className="transition active:scale-95"
             >
-              <Image src="/lvo.jpg" alt="Lovely Vibes Only logo" width={56} height={56} className="h-14 w-14 rounded-2xl border-2 border-black object-cover" priority />
+              <Image src="/lovely-logo.png" alt="Lovely" width={400} height={126} priority className="h-8 w-auto" />
             </Link>
-            {canAddTemplates ? (
-              <button
-                type="button"
-                aria-label="Add template"
-                onClick={() => router.push("/templates/new")}
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black transition active:scale-95 hover:bg-[#e9e9e9]"
-              >
-                <Plus className="h-5 w-5" strokeWidth={2.25} />
-              </button>
-            ) : null}
           </div>
 
           <div className="flex min-w-0 flex-1 items-center">
@@ -1186,7 +1176,7 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
                 aria-label="Search filters"
                 aria-pressed={showFilters}
                 onClick={() => setShowFilters(true)}
-                className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-black text-white transition active:scale-90"
+                className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white transition active:scale-90"
               >
                 <SlidersHorizontal className="h-4.5 w-4.5" />
                 {filtersActive ? <span aria-hidden="true" className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-white" /> : null}
@@ -1195,6 +1185,16 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {canAddTemplates ? (
+              <button
+                type="button"
+                aria-label="Add template"
+                onClick={() => router.push("/templates/new")}
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black transition active:scale-95 hover:bg-[#e9e9e9]"
+              >
+                <Plus className="h-5 w-5" strokeWidth={2.25} />
+              </button>
+            ) : null}
             {onTabChange ? (
               <div className="hidden shrink-0 items-center gap-2 min-[1033px]:flex">
                 {desktopNavItems.filter(({ tab }) => tab !== "profile").map(({ tab, label, icon: Icon }) => (
@@ -1204,7 +1204,7 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
                     aria-label={label}
                     aria-current={activeTab === tab ? "page" : undefined}
                     onClick={() => onTabChange(tab)}
-                    className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-black text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
+                    className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
                   >
                     <Icon className="h-5 w-5" strokeWidth={1.8} />
                   </button>
@@ -1212,7 +1212,7 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
               </div>
             ) : null}
             {subscribed ? null : (
-              <button type="button" aria-label="Subscribe" onClick={() => router.push("/subscription")} className="flex h-14 items-center gap-1.5 whitespace-nowrap rounded-2xl bg-black px-4 text-xs font-medium text-white shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95">
+              <button type="button" aria-label="Subscribe" onClick={() => router.push("/subscription")} className="flex h-14 items-center gap-1.5 whitespace-nowrap rounded-2xl bg-brand px-4 text-xs font-medium text-white shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95">
                 <SubscribeIcon />
                 <span className="flex flex-col items-start leading-tight">
                   <span>Subscribe</span>
@@ -1229,7 +1229,7 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
                     aria-label={label}
                     aria-current={activeTab === tab ? "page" : undefined}
                     onClick={() => onTabChange(tab)}
-                    className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-black text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
+                    className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
                   >
                     <Icon className="h-5 w-5" strokeWidth={1.8} />
                   </button>
@@ -1719,7 +1719,6 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   const [sharePopoverOpen, setSharePopoverOpen] = useState(false);
   const [savePopoverOpen, setSavePopoverOpen] = useState(false);
   const [gatheredSupplies, setGatheredSupplies] = useState<Set<string>>(new Set());
-  const [subscriptionPrompt, setSubscriptionPrompt] = useState(false);
   const [galleryTemplate, setGalleryTemplate] = useState<Template | null>(null);
   // Replays a one-shot icon animation: the nonce changes on every trigger so the icon remounts.
   const [iconAnimation, setIconAnimation] = useState<{ action: "like" | "share" | "save"; nonce: number } | null>(null);
@@ -1744,7 +1743,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
 
   const requestDownload = () => {
     if (!canDownload) {
-      setSubscriptionPrompt(true);
+      router.push(`/subscription?template=${template.slug}`);
       return;
     }
     if (downloading) return;
@@ -1761,7 +1760,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
 
   const requestPrint = () => {
     if (!canDownload) {
-      setSubscriptionPrompt(true);
+      router.push(`/subscription?template=${template.slug}`);
       return;
     }
     if (printing) return;
@@ -1848,7 +1847,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
             <div className="flex flex-col gap-5">
               <div>
                 {template.categorySlug ? (
-                  <nav aria-label="Category" className="mb-3 inline-flex h-9 items-stretch divide-x divide-white/20 overflow-hidden rounded-xl bg-black text-sm font-semibold text-white">
+                  <nav aria-label="Category" className="mb-3 inline-flex h-9 items-stretch divide-x divide-white/20 overflow-hidden rounded-xl bg-brand text-sm font-semibold text-white">
                     {categoryTrail?.parent ? (
                       <Link href={`/categories/${categoryTrail.parent.slug}`} aria-label={`Browse ${categoryTrail.parent.name}`} className="inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25">
                         <CategoryIcon icon={categoryTrail.parent.icon} className="h-4 w-4 shrink-0" />{categoryTrail.parent.name}
@@ -1890,7 +1889,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
                         return (
                           <tr key={supply.name} onClick={toggle} className="cursor-pointer transition hover:bg-[#f7f7f7] active:bg-[#f2f2f2]">
                             <td className="w-9 border-r border-black/[0.08] py-1.5 text-center">
-                              <button type="button" role="checkbox" aria-checked={ready} aria-label={`${supply.name}, item ${index + 1}`} className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition ${ready ? "bg-black text-white" : "bg-[#f2f2f2] text-black/45"}`}>
+                              <button type="button" role="checkbox" aria-checked={ready} aria-label={`${supply.name}, item ${index + 1}`} className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition ${ready ? "bg-brand text-white" : "bg-[#f2f2f2] text-black/45"}`}>
                                 {ready ? <Check className="h-3 w-3" strokeWidth={3} /> : index + 1}
                               </button>
                             </td>
@@ -1906,7 +1905,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
 
             <div className="mt-auto flex flex-col gap-2">
               <div className="grid auto-cols-fr grid-flow-col gap-2">
-                <button type="button" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="group flex h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-black text-[13px] font-semibold text-white shadow-[0_6px_16px_rgba(0,0,0,0.18)] transition active:scale-95 hover:bg-black/85 disabled:opacity-70">
+                <button type="button" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="group flex h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-brand text-[13px] font-semibold text-white shadow-[0_6px_16px_rgba(0,0,0,0.18)] transition active:scale-95 hover:bg-brand/85 disabled:opacity-70">
                   {downloading ? <LoaderCircle className="h-8 w-8 animate-spin" strokeWidth={1.8} /> : downloadDone ? <Check className="h-8 w-8 animate-icon-pop" strokeWidth={2.5} /> : canDownload ? <Download className="h-8 w-8 animate-icon-bob" strokeWidth={1.8} /> : <Lock className="h-8 w-8" strokeWidth={1.8} />}
                   {downloading ? "Getting it ready…" : downloadDone ? "Done!" : "Download"}
                 </button>
@@ -1942,7 +1941,6 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
         </div>
       </div>
 
-      {subscriptionPrompt ? <SubscriptionSheet template={template} onClose={() => setSubscriptionPrompt(false)} /> : null}
       <div ref={detailPrintContentRef} className="hidden" aria-hidden="true" />
       {galleryTemplate ? <TemplateGallery template={galleryTemplate} onClose={() => setGalleryTemplate(null)} /> : null}
     </main>
@@ -2281,7 +2279,7 @@ function ProfileScreen({ templates, interactions, subscribed = false, canAddTemp
       <div className="mx-auto mt-4 w-full max-w-none whitespace-nowrap min-[1033px]:max-w-3xl">
       <div className="flex items-center gap-4">
         <div className="relative shrink-0">
-          <div aria-hidden="true" className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-black text-xl font-semibold text-white">{initials || "U"}</div>
+          <div aria-hidden="true" className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-brand text-xl font-semibold text-white">{initials || "U"}</div>
           {subscribed ? (
             <button type="button" aria-label="Manage subscription" onClick={() => router.push("/subscription/manage")} className="absolute -right-1 -top-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#f2f2f2] text-black transition active:scale-90">
               <Gem className="h-4 w-4" strokeWidth={2} />
@@ -2319,10 +2317,10 @@ function ProfileScreen({ templates, interactions, subscribed = false, canAddTemp
 
       <div className="mt-5">
         <div className="flex gap-10 border-b border-black/[0.08]">
-          <button type="button" aria-current="page" className="flex h-10 w-32 items-center justify-start gap-1.5 border-b-2 border-black px-1 text-left text-sm font-medium text-black">
+          <button type="button" aria-current="page" className="flex h-10 w-32 items-center justify-start gap-1.5 border-b-2 border-brand px-1 text-left text-sm font-medium text-brand">
             <Bookmark className="h-4 w-4" fill="currentColor" strokeWidth={2} />
             <span>Collections</span>
-            <span className="ml-0.5 flex h-5 min-w-5 items-center justify-center rounded-md bg-black px-1.5 text-[10px] tabular-nums text-white">{collectionCount}</span>
+            <span className="ml-0.5 flex h-5 min-w-5 items-center justify-center rounded-md bg-brand px-1.5 text-[10px] tabular-nums text-white">{collectionCount}</span>
           </button>
           <button type="button" onClick={() => router.push("/liked")} className="flex h-10 w-32 items-center justify-start gap-1.5 border-b-2 border-transparent px-1 text-left text-sm font-medium text-black/40 transition active:text-black">
             <Heart className="h-4 w-4" strokeWidth={2} />

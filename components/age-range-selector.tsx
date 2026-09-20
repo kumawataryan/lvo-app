@@ -34,7 +34,7 @@ export function AgeRangeSelector({
                 else if (age - minimumAge <= maximumAge - age) onChange(age, maximumAge);
                 else onChange(minimumAge, age);
               }}
-              className={`flex h-9 items-center justify-center rounded-lg text-sm font-medium transition active:scale-95 ${selected ? "bg-black text-white" : "bg-[#f2f2f2] text-black/60"}`}
+              className={`flex h-9 items-center justify-center rounded-lg text-sm font-medium transition active:scale-95 ${selected ? "bg-brand text-white" : "bg-[#f2f2f2] text-black/60"}`}
             >
               {age}
             </button>

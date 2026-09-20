@@ -315,7 +315,7 @@ export function ImportTemplatesPanel({ categories }: { categories: Category[] })
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex min-h-18 cursor-pointer items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-3 transition hover:border-black/20 active:scale-[0.99]">
-          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${csvFile ? "bg-black text-white" : "bg-[#f2f2f2] text-black/55"}`}>
+          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${csvFile ? "bg-brand text-white" : "bg-[#f2f2f2] text-black/55"}`}>
             <FileSpreadsheet className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
@@ -326,7 +326,7 @@ export function ImportTemplatesPanel({ categories }: { categories: Category[] })
         </label>
 
         <label className="flex min-h-18 cursor-pointer items-center gap-3 rounded-xl border border-black/10 bg-white px-3 py-3 transition hover:border-black/20 active:scale-[0.99]">
-          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${folderFiles.length ? "bg-black text-white" : "bg-[#f2f2f2] text-black/55"}`}>
+          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${folderFiles.length ? "bg-brand text-white" : "bg-[#f2f2f2] text-black/55"}`}>
             <FolderOpen className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
@@ -372,7 +372,7 @@ export function ImportTemplatesPanel({ categories }: { categories: Category[] })
         type="button"
         disabled={!validCount || importing}
         onClick={runImport}
-        className="flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20"
+        className="flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20"
       >
         {importing ? <><LoaderCircle className="h-5 w-5 animate-spin" />Importing…</> : <><CloudUpload className="h-4 w-4" />Import {validCount || ""} template{validCount === 1 ? "" : "s"} as drafts</>}
       </button>

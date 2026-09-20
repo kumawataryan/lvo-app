@@ -341,7 +341,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
                 {categoryIds.map((id) => {
                   const category = categories.find((item) => item.id === id);
                   return category ? (
-                    <button key={id} type="button" onClick={() => toggleCategory(id)} className="inline-flex items-center gap-1 rounded-lg bg-black px-2.5 py-1.5 text-xs font-medium text-white">
+                    <button key={id} type="button" onClick={() => toggleCategory(id)} className="inline-flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-medium text-white">
                       {category.name}<X aria-hidden="true" className="h-3 w-3 text-white/65" />
                     </button>
                   ) : null;
@@ -362,7 +362,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
             <Field label="Access">
               <button type="button" role="switch" aria-checked={isFree} onClick={() => setIsFree((value) => !value)} className="flex h-12 w-full items-center justify-between rounded-xl bg-[#f2f2f2] px-4 text-sm font-medium">
                 <span>Free download</span>
-                <span className={`relative h-6 w-11 rounded-full transition ${isFree ? "bg-black" : "bg-black/15"}`}>
+                <span className={`relative h-6 w-11 rounded-full transition ${isFree ? "bg-brand" : "bg-black/15"}`}>
                   <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${isFree ? "left-6" : "left-1"}`} />
                 </span>
               </button>
@@ -392,7 +392,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
           <Field label="Tags" optional>
             <div className="flex min-h-12 flex-wrap items-center gap-2 rounded-xl bg-[#f2f2f2] px-3 py-2 ring-black/10 transition focus-within:ring-2">
               {tags.map((tag) => (
-                <span key={tag} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-black px-2.5 text-xs font-medium text-white">
+                <span key={tag} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand px-2.5 text-xs font-medium text-white">
                   {tag}
                   <button type="button" aria-label={`Remove ${tag} tag`} onClick={() => setTags((current) => current.filter((item) => item !== tag))} className="flex h-5 w-5 items-center justify-center rounded text-white/65 transition hover:text-white">
                     <X aria-hidden="true" className="h-3.5 w-3.5" />
@@ -450,7 +450,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
 
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-        <button type="submit" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
+        <button type="submit" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
           {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : editing ? <><Check className="h-4 w-4" />Save changes</> : <><Plus className="h-4 w-4" />Publish template</>}
         </button>
         </form>
@@ -479,7 +479,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
                       {options.map((category) => {
                         const selected = categoryIds.includes(category.id);
                         return (
-                          <button key={category.id} type="button" aria-pressed={selected} onClick={() => toggleCategory(category.id)} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium ${selected ? "bg-black text-white" : "bg-white text-black/55"}`}>
+                          <button key={category.id} type="button" aria-pressed={selected} onClick={() => toggleCategory(category.id)} className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium ${selected ? "bg-brand text-white" : "bg-white text-black/55"}`}>
                             {selected ? <Check aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2.5} /> : null}
                             {category.name}
                           </button>
@@ -491,7 +491,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
               );
             })}
           </div>
-          <button type="button" onClick={() => setCategoryPickerOpen(false)} disabled={!categoryIds.length} className="mt-5 h-12 w-full rounded-xl bg-black text-sm font-semibold text-white disabled:bg-black/20">Done</button>
+          <button type="button" onClick={() => setCategoryPickerOpen(false)} disabled={!categoryIds.length} className="mt-5 h-12 w-full rounded-xl bg-brand text-sm font-semibold text-white disabled:bg-black/20">Done</button>
         </DrawerContent>
       </Drawer>
 

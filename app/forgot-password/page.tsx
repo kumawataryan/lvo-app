@@ -50,7 +50,7 @@ export default function ForgotPasswordPage() {
             </div>
           ) : (
             <>
-              <Image src="/lvo.jpg" alt="Lovely Vibes Only" width={56} height={56} preload className="h-14 w-14 rounded-2xl object-cover" />
+              <Image src="/lovely-logo.png" alt="Lovely" width={400} height={126} preload className="h-10 w-auto" />
               <h1 className="mt-6 text-3xl font-semibold tracking-tight">Reset your password</h1>
               <p className="mt-2 text-sm leading-6 text-black/50">Enter the email you use for Lovely Vibes Only. We’ll send you a secure reset link.</p>
 

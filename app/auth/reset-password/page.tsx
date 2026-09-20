@@ -51,7 +51,7 @@ export default function ResetPasswordPage() {
         </Link>
         <div className="relative mx-auto flex w-full max-w-xl flex-1 flex-col">
           <div className="my-auto py-10">
-            <Image src="/lvo.jpg" alt="Lovely Vibes Only" width={56} height={56} priority className="h-14 w-14 rounded-2xl object-cover" />
+            <Image src="/lovely-logo.png" alt="Lovely" width={400} height={126} priority className="h-10 w-auto" />
 
             <h1 className="mt-6 text-3xl font-semibold tracking-tight">Set a new password</h1>
             <p className="mt-2 text-sm leading-6 text-black/50">Choose a password to use next time you sign in.</p>
