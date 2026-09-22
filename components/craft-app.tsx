@@ -1136,7 +1136,7 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
     <section className="m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
       <header className="shrink-0 px-3 pb-6 pt-3 md:px-4 lg:px-5">
         <div className="flex items-center gap-2">
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="hidden shrink-0 items-center gap-2 min-[1033px]:flex">
             <Link
               href="/"
               aria-label="Go to home"
@@ -1184,7 +1184,7 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
             </label>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="hidden shrink-0 items-center gap-2 min-[1033px]:flex">
             {canAddTemplates ? (
               <button
                 type="button"
@@ -1366,6 +1366,7 @@ export function TemplateCard({
   eager?: boolean;
 }) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelAnchorRef = useRef<HTMLButtonElement | null>(null);
   const printContentRef = useRef<HTMLDivElement>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1424,6 +1425,16 @@ export function TemplateCard({
     runPrint();
   };
 
+  const quickActions = (
+    <>
+          <button type="button" aria-label="Download" onClick={() => { handleDownload(); setMenuOpen(false); }} className="flex h-11 w-11 items-center justify-center rounded-xl text-white transition active:scale-90 hover:bg-white/15">{downloading ? <LoaderCircle className="h-5.5 w-5.5 animate-spin" /> : <Download className="h-5.5 w-5.5" />}</button>
+          {template.canPrint ? <button type="button" aria-label="Print" onClick={() => { handlePrint(); setMenuOpen(false); }} className="flex h-11 w-11 items-center justify-center rounded-xl text-white transition active:scale-90 hover:bg-white/15">{printing ? <LoaderCircle className="h-5.5 w-5.5 animate-spin" /> : <Printer className="h-5.5 w-5.5" />}</button> : null}
+          <button type="button" aria-label={liked ? "Unlike" : "Like"} onClick={() => { handleLike(); setMenuOpen(false); }} className={`flex h-11 w-11 items-center justify-center rounded-xl transition active:scale-90 hover:bg-white/15 ${liked ? "text-red-500" : "text-white"}`}><Heart className="h-5.5 w-5.5" fill={liked ? "currentColor" : "none"} /></button>
+          <button type="button" aria-label="Share" onClick={(event) => { panelAnchorRef.current = event.currentTarget.closest(".template-card-desktop-actions") ? event.currentTarget : triggerRef.current; setMenuOpen(false); setPanel("share"); }} className="flex h-11 w-11 items-center justify-center rounded-xl text-white transition active:scale-90 hover:bg-white/15"><Share2 className="h-5.5 w-5.5" /></button>
+          <button type="button" aria-label="Save" onClick={(event) => { panelAnchorRef.current = event.currentTarget.closest(".template-card-desktop-actions") ? event.currentTarget : triggerRef.current; setMenuOpen(false); setPanel("save"); }} className="flex h-11 w-11 items-center justify-center rounded-xl text-white transition active:scale-90 hover:bg-white/15"><Bookmark className="h-5.5 w-5.5" fill={saved ? "currentColor" : "none"} /></button>
+    </>
+  );
+
   return (
     <article
       className={`template-card relative m-0 w-full cursor-pointer touch-manipulation overflow-hidden rounded-[22px] bg-[#f2eee8] p-0 ${hasVideo ? "aspect-[9/16]" : "ring-1 ring-black/10"}`}
@@ -1452,6 +1463,13 @@ export function TemplateCard({
         </span>
       ) : null}
 
+      <div
+        className="template-card-desktop-actions absolute top-2 right-2 z-20 max-h-[calc(100%-1rem)] flex-col items-center gap-2 [&>button]:min-h-6 [&>button]:bg-black/20 [&>button]:backdrop-blur-xl [&>button:hover]:bg-black/30"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {quickActions}
+      </div>
+
       <button
         ref={triggerRef}
         type="button"
@@ -1461,7 +1479,7 @@ export function TemplateCard({
           event.stopPropagation();
           setMenuOpen((open) => !open);
         }}
-        className="absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md transition active:scale-90"
+        className="template-card-actions-trigger absolute bottom-2 right-2 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md transition active:scale-90"
       >
         {menuOpen ? <X className="h-5 w-5" strokeWidth={2.2} /> : <MoreHorizontal className="h-5 w-5" strokeWidth={2.2} />}
       </button>
@@ -1472,19 +1490,15 @@ export function TemplateCard({
           side="top"
           align="end"
           sideOffset={8}
-          className="flex w-auto min-w-0 flex-col gap-1.5 rounded-full bg-black/80 p-1.5 shadow-lg backdrop-blur-md"
+          className="flex w-auto min-w-0 flex-col gap-1.5 rounded-2xl bg-black/35 p-1.5 shadow-none backdrop-blur-xl"
           onClick={(event) => event.stopPropagation()}
         >
-          <button type="button" aria-label={liked ? "Unlike" : "Like"} onClick={() => { handleLike(); setMenuOpen(false); }} className={`flex h-10 w-10 items-center justify-center rounded-full transition active:scale-90 hover:bg-white/15 ${liked ? "text-red-500" : "text-white"}`}><Heart className="h-5 w-5" fill={liked ? "currentColor" : "none"} /></button>
-          <button type="button" aria-label="Save" onClick={() => { setMenuOpen(false); setPanel("save"); }} className="flex h-10 w-10 items-center justify-center rounded-full text-white transition active:scale-90 hover:bg-white/15"><Bookmark className="h-5 w-5" fill={saved ? "currentColor" : "none"} /></button>
-          <button type="button" aria-label="Download" onClick={() => { handleDownload(); setMenuOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-white transition active:scale-90 hover:bg-white/15">{downloading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}</button>
-          {template.canPrint ? <button type="button" aria-label="Print" onClick={() => { handlePrint(); setMenuOpen(false); }} className="flex h-10 w-10 items-center justify-center rounded-full text-white transition active:scale-90 hover:bg-white/15">{printing ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Printer className="h-5 w-5" />}</button> : null}
-          <button type="button" aria-label="Share" onClick={() => { setMenuOpen(false); setPanel("share"); }} className="flex h-10 w-10 items-center justify-center rounded-full text-white transition active:scale-90 hover:bg-white/15"><Share2 className="h-5 w-5" /></button>
+          {quickActions}
         </PopoverContent>
       </Popover>
 
       <Popover open={panel === "save"} onOpenChange={(open) => setPanel(open ? "save" : null)}>
-        <PopoverContent anchor={triggerRef} align="end" onClick={(event) => event.stopPropagation()}>
+        <PopoverContent anchor={panelAnchorRef} align="end" onClick={(event) => event.stopPropagation()}>
           <SaveToCollectionOptions
             template={template}
             interactions={interactions}
@@ -1497,7 +1511,7 @@ export function TemplateCard({
       </Popover>
 
       <Popover open={panel === "share"} onOpenChange={(open) => setPanel(open ? "share" : null)}>
-        <PopoverContent anchor={triggerRef} align="end" onClick={(event) => event.stopPropagation()}>
+        <PopoverContent anchor={panelAnchorRef} align="end" onClick={(event) => event.stopPropagation()}>
           <PopoverTitle>Share template</PopoverTitle>
           <PopoverDescription className="sr-only">Choose where to share {template.name}.</PopoverDescription>
           <ShareOptionsGrid template={template} onClose={() => setPanel(null)} />
@@ -1786,9 +1800,19 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
         if ((event.target as HTMLElement).closest("button, input")) return;
         handleDoubleTap();
       }}
-      className="relative w-full touch-manipulation select-none overflow-hidden"
+      className="relative w-full touch-manipulation select-none overflow-hidden rounded-2xl"
     >
-      <DetailVideoPlayer key={template.id} template={template} active />
+      <DetailVideoPlayer
+        key={template.id}
+        template={template}
+        active
+        mobileOverlay={
+          <div className="max-h-[24dvh] w-full overflow-y-auto text-white">
+            <h1 className="text-base font-semibold leading-5">{template.name}</h1>
+            <DetailDescription description={template.description} tags={[]} overlay />
+          </div>
+        }
+      />
       {heartBurst ? (
         <div className="heart-burst pointer-events-none absolute inset-0 z-20 flex items-center justify-center text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
           <Heart fill="currentColor" strokeWidth={1.5} />
@@ -1797,86 +1821,12 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
     </section>
   );
 
-  const tiles: MasonryTile[] = [
-    {
-      key: template.id,
-      span: 4,
-      render: (
-        <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white min-[900px]:flex-row">
-          <div className="relative w-full overflow-hidden bg-[#f2f2f2] min-[900px]:w-1/2 min-[900px]:shrink-0">
-            {heroMedia}
-
-            <button type="button" aria-label="Back" onClick={onBack} className="absolute left-4 top-4 z-20 flex h-14 w-14 items-center justify-center rounded-2xl bg-white transition active:scale-95"><ArrowLeft className="h-6 w-6" /></button>
-          </div>
-
-          <div className="flex min-w-0 flex-1 flex-col gap-6 p-4">
-            <div className="grid auto-cols-fr grid-flow-col gap-2">
-              <button type="button" aria-label="Like" onClick={() => { animateIcon("like"); void interactions.toggleLike(template.id); }} className={`group flex h-20 min-w-0 items-center justify-center rounded-2xl transition active:scale-[0.98] bg-[#f2f2f2] hover:bg-[#e9e9e9] ${liked ? "text-red-500" : "text-black/75"}`}>
-                <Heart key={iconAnimationKey("like")} className={`h-9 w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "like" && liked ? "animate-icon-pop" : ""}`} fill={liked ? "currentColor" : "none"} strokeWidth={1.7} />
-              </button>
-
-              <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
-                <PopoverTrigger aria-label="Share" onClick={() => animateIcon("share")} className="group flex h-20 min-w-0 items-center justify-center rounded-2xl transition active:scale-[0.98] bg-[#f2f2f2] text-black/75 hover:bg-[#e9e9e9]">
-                  <Share2 key={iconAnimationKey("share")} className={`h-9 w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "share" ? "animate-icon-wiggle" : ""}`} strokeWidth={1.7} />
-                </PopoverTrigger>
-                <PopoverContent>
-                  <PopoverTitle>Share template</PopoverTitle>
-                  <PopoverDescription className="sr-only">Choose where to share {template.name}.</PopoverDescription>
-                  <ShareOptionsGrid template={template} onClose={() => setSharePopoverOpen(false)} />
-                </PopoverContent>
-              </Popover>
-
-
-              <Popover open={savePopoverOpen} onOpenChange={setSavePopoverOpen}>
-                <PopoverTrigger aria-label="Save" className={`group flex h-20 min-w-0 items-center justify-center rounded-2xl transition active:scale-[0.98] ${saved ? "bg-[#e9e9e9] text-black hover:bg-[#dedede]" : "bg-[#f2f2f2] text-black/75 hover:bg-[#e9e9e9]"}`}>
-                  <Bookmark key={iconAnimationKey("save")} className={`h-9 w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "save" && saved ? "animate-icon-pop" : ""}`} fill={saved ? "currentColor" : "none"} strokeWidth={1.7} />
-                </PopoverTrigger>
-                <PopoverContent>
-                  <SaveToCollectionOptions
-                    template={template}
-                    interactions={interactions}
-                    onClose={() => setSavePopoverOpen(false)}
-                    onChange={(active) => { if (active) animateIcon("save"); }}
-                    renderTitle={(title) => <PopoverTitle>{title}</PopoverTitle>}
-                    compact
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="flex flex-col gap-5">
-              <div>
-                {template.categorySlug ? (
-                  <nav aria-label="Category" className="mb-3 inline-flex h-9 items-stretch divide-x divide-white/20 overflow-hidden rounded-xl bg-brand text-sm font-semibold text-white">
-                    {categoryTrail?.parent ? (
-                      <Link href={`/categories/${categoryTrail.parent.slug}`} aria-label={`Browse ${categoryTrail.parent.name}`} className="inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25">
-                        <CategoryIcon icon={categoryTrail.parent.icon} className="h-4 w-4 shrink-0" />{categoryTrail.parent.name}
-                      </Link>
-                    ) : null}
-                    <Link href={`/categories/${template.categorySlug}`} aria-label={`Browse ${template.category}`} className={`inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25 ${categoryTrail?.parent ? "text-white/85" : ""}`}>
-                      {categoryTrail?.parent ? null : <CategoryIcon icon={categoryTrail?.category.icon} className="h-4 w-4 shrink-0" />}{template.category}
-                    </Link>
-                  </nav>
-                ) : null}
-                <h1 className="text-balance text-[27px] font-semibold leading-tight tracking-tight">{template.name}</h1>
-                <DetailDescription description={template.description} tags={template.tags} />
-              </div>
-              {photos.length ? (
-                <button type="button" aria-label={`View ${photos.length} ${photos.length === 1 ? "photo" : "photos"}`} onClick={() => setGalleryTemplate(template)} className="group flex w-fit items-center py-1 pl-1 pr-2 transition active:scale-95">
-                  {photos.slice(0, 3).map((imageSrc, index, shown) => (
-                    <span key={`${imageSrc}-${index}`} className={`relative block h-14 w-14 overflow-hidden rounded-xl border-2 border-white bg-[#f2f2f2] shadow-[0_0_0_1px_rgba(0,0,0,0.12)] transition group-hover:rotate-0 ${index ? "-ml-10" : ""} ${index % 2 ? "rotate-6" : "-rotate-3"}`} style={{ zIndex: shown.length - index }}>
-                      <Image src={imageSrc} alt="" fill sizes="56px" className="object-cover" />
-                      {index === 0 && photos.length > 1 ? <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-sm font-bold tabular-nums text-white">{photos.length}+</span> : null}
-                    </span>
-                  ))}
-                </button>
-              ) : null}
-              {template.supplyItems.length ? (
-                <section className="overflow-hidden rounded-2xl border border-black/10">
-                  <h2 className="flex items-center gap-2 border-b border-black/10 px-4 py-2.5 text-[15px] font-semibold">
-                    <Package className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />What you’ll need
+  const suppliesSection = template.supplyItems.length ? (
+    <section className="min-w-0 overflow-hidden rounded-2xl bg-white border border-black/10">
+                  <h2 className="flex items-center gap-2 border-b border-black/10 px-3 pb-1 pt-3 text-[13px] min-[900px]:px-4 min-[900px]:py-2.5 min-[900px]:text-[15px] font-semibold">
+                    <Package className="h-4 w-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />What you’ll need
                   </h2>
-                  <table className="w-full border-collapse text-sm">
+                  <table className="w-full table-fixed border-collapse text-sm min-[900px]:table-auto">
                     <tbody className="divide-y divide-black/[0.08]">
                       {template.supplyItems.map((supply, index) => {
                         const ready = gatheredSupplies.has(supply.name);
@@ -1888,36 +1838,169 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
                         });
                         return (
                           <tr key={supply.name} onClick={toggle} className="cursor-pointer transition hover:bg-[#f7f7f7] active:bg-[#f2f2f2]">
-                            <td className="w-9 border-r border-black/[0.08] py-1.5 text-center">
-                              <button type="button" role="checkbox" aria-checked={ready} aria-label={`${supply.name}, item ${index + 1}`} className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition ${ready ? "bg-brand text-white" : "bg-[#f2f2f2] text-black/45"}`}>
-                                {ready ? <Check className="h-3 w-3" strokeWidth={3} /> : index + 1}
+                            <td className="w-9 py-1.5 text-center align-middle border-r border-black/[0.08]">
+                              <button type="button" role="checkbox" aria-checked={ready} aria-label={`${supply.name}, item ${index + 1}`} className="inline-flex h-5 w-5 touch-manipulation items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-brand">
+                                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition ${ready ? "bg-brand text-white" : "bg-[#f2f2f2] text-black/45"}`}>
+                                  {ready ? <Check className="h-3 w-3" strokeWidth={3} /> : index + 1}
+                                </span>
                               </button>
                             </td>
-                            <td className={`px-3 py-1.5 text-sm transition ${ready ? "text-black/35 line-through" : "text-black/80"}`}>{supply.name}</td>
+                            <td className={`break-words px-3 py-1.5 text-xs leading-5 min-[900px]:px-3 min-[900px]:text-sm transition ${ready ? "text-black/35 line-through" : "text-black/80"}`}>{supply.name}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </section>
+  ) : null;
+
+  const tiles: MasonryTile[] = [
+    {
+      key: template.id,
+      span: 4,
+      render: (
+        <div className="flex w-full flex-col gap-1.5 min-[900px]:gap-3">
+        <div className="grid w-full grid-cols-1 overflow-hidden rounded-2xl bg-white min-[900px]:border min-[900px]:border-black/10 min-[900px]:grid-cols-2 min-[900px]:grid-rows-[auto_1fr]">
+          <div className={`relative z-30 col-start-1 row-start-1 m-3 flex flex-col items-end gap-2 p-0 self-start justify-self-end min-[900px]:z-auto min-[900px]:col-start-2 min-[900px]:row-start-1 min-[900px]:m-0 min-[900px]:grid min-[900px]:auto-cols-fr min-[900px]:grid-flow-col min-[900px]:gap-2 min-[900px]:self-stretch min-[900px]:justify-self-stretch min-[900px]:px-4 min-[900px]:pb-0 min-[900px]:pt-4`}>
+            <div className="flex flex-col gap-2 min-[900px]:hidden">
+              <button type="button" aria-label="Download" title="Download" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="flex h-14 w-14 touch-manipulation items-center justify-center rounded-2xl bg-brand text-white transition active:scale-95 hover:bg-brand/90 disabled:opacity-70">
+                {downloading ? <LoaderCircle className="h-6 w-6 animate-spin" /> : downloadDone ? <Check className="h-6 w-6" /> : <Download className="h-6 w-6" />}
+              </button>
+              {template.canPrint ? (
+                <button type="button" aria-label="Print" title="Print" onClick={requestPrint} disabled={printing} aria-busy={printing} className="flex h-14 w-14 touch-manipulation items-center justify-center rounded-2xl bg-white text-black transition active:scale-95 hover:bg-[#f2f2f2] disabled:opacity-70">
+                  {printing ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Printer className="h-6 w-6" />}
+                </button>
               ) : null}
             </div>
+            <div role="separator" className="my-1 mr-2 h-px w-10 bg-white/50 min-[900px]:hidden" />
+            <button type="button" aria-label="Like" aria-pressed={liked} onClick={() => { animateIcon("like"); triggerHaptic(12); void interactions.toggleLike(template.id); }} className={`group flex h-14 w-14 shrink-0 min-w-0 touch-manipulation select-none min-[900px]:flex-row min-[900px]:gap-0 min-[900px]:h-20 min-[900px]:w-auto items-center justify-center rounded-2xl cursor-pointer transition active:scale-90 active:bg-black/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black min-[900px]:active:scale-[0.98] min-[900px]:active:bg-transparent min-[900px]:focus-visible:outline-black bg-black/20 backdrop-blur-xl hover:bg-black/30 min-[900px]:bg-[#f2f2f2] min-[900px]:hover:bg-[#e9e9e9] min-[900px]:backdrop-blur-none ${liked ? "text-red-500" : "text-white min-[900px]:text-black/75"}`}>
+              <Heart key={iconAnimationKey("like")} className={`h-6 w-6 stroke-2 min-[900px]:stroke-[1.7] min-[900px]:h-9 min-[900px]:w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "like" && liked ? "animate-icon-pop" : ""}`} fill={liked ? "currentColor" : "none"} strokeWidth={1.7} />
+            </button>
 
-            <div className="mt-auto flex flex-col gap-2">
+            <Popover open={sharePopoverOpen} onOpenChange={setSharePopoverOpen}>
+              <PopoverTrigger aria-label="Share" onClick={() => { animateIcon("share"); triggerHaptic(12); }} className="group flex h-14 w-14 shrink-0 min-w-0 touch-manipulation select-none min-[900px]:flex-row min-[900px]:gap-0 min-[900px]:h-20 min-[900px]:w-auto items-center justify-center rounded-2xl cursor-pointer transition active:scale-90 active:bg-black/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black min-[900px]:active:scale-[0.98] min-[900px]:active:bg-transparent min-[900px]:focus-visible:outline-black text-white min-[900px]:text-black/75 bg-black/20 backdrop-blur-xl hover:bg-black/30 min-[900px]:bg-[#f2f2f2] min-[900px]:hover:bg-[#e9e9e9] min-[900px]:backdrop-blur-none">
+                <Share2 key={iconAnimationKey("share")} className={`h-6 w-6 stroke-2 min-[900px]:stroke-[1.7] min-[900px]:h-9 min-[900px]:w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "share" ? "animate-icon-wiggle" : ""}`} strokeWidth={1.7} />
+              </PopoverTrigger>
+              <PopoverContent>
+                <PopoverTitle>Share template</PopoverTitle>
+                <PopoverDescription className="sr-only">Choose where to share {template.name}.</PopoverDescription>
+                <ShareOptionsGrid template={template} onClose={() => setSharePopoverOpen(false)} />
+              </PopoverContent>
+            </Popover>
+
+
+            <Popover open={savePopoverOpen} onOpenChange={setSavePopoverOpen}>
+              <PopoverTrigger aria-label="Save" onClick={() => triggerHaptic(12)} className={`group flex h-14 w-14 min-[900px]:ml-0 min-[900px]:px-0 shrink-0 min-w-0 touch-manipulation select-none min-[900px]:flex-row min-[900px]:gap-0 min-[900px]:h-20 min-[900px]:w-auto items-center justify-center rounded-2xl cursor-pointer transition active:scale-90 active:bg-brand/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black min-[900px]:active:scale-[0.98] min-[900px]:active:bg-transparent min-[900px]:focus-visible:outline-black bg-black/20 text-white backdrop-blur-xl hover:bg-black/30 min-[900px]:backdrop-blur-none ${saved ? "min-[900px]:text-black min-[900px]:bg-[#e9e9e9] min-[900px]:hover:bg-[#dedede]" : "min-[900px]:text-black/75 min-[900px]:bg-[#f2f2f2] min-[900px]:hover:bg-[#e9e9e9]"}`}>
+                <Bookmark key={iconAnimationKey("save")} className={`h-6 w-6 text-white min-[900px]:text-inherit stroke-2 min-[900px]:stroke-[1.7] min-[900px]:h-9 min-[900px]:w-9 transition-transform duration-200 group-hover:scale-110 ${iconAnimation?.action === "save" && saved ? "animate-icon-pop" : ""}`} fill={saved ? "currentColor" : "none"} strokeWidth={1.7} />
+              </PopoverTrigger>
+              <PopoverContent>
+                <SaveToCollectionOptions
+                  template={template}
+                  interactions={interactions}
+                  onClose={() => setSavePopoverOpen(false)}
+                  onChange={(active) => { if (active) animateIcon("save"); }}
+                  renderTitle={(title) => <PopoverTitle>{title}</PopoverTitle>}
+                  compact
+                />
+              </PopoverContent>
+            </Popover>
+
+
+          </div>
+
+          <div className="relative col-start-1 row-start-1 w-full overflow-hidden rounded-2xl bg-[#f2f2f2] min-[900px]:col-start-1 min-[900px]:row-start-1 min-[900px]:row-span-2">
+            {heroMedia}
+            {photos.length ? (
+              <button
+                type="button"
+                aria-label={`View gallery, ${photos.length} ${photos.length === 1 ? "photo" : "photos"}`}
+                title="View gallery"
+                onClick={() => setGalleryTemplate(template)}
+                className="absolute bottom-28 right-3 z-20 h-14 w-14 touch-manipulation rounded-2xl transition active:scale-95 min-[900px]:hidden"
+              >
+                {photos.slice(0, 3).reverse().map((src, index, images) => {
+                  const depth = images.length - 1 - index;
+                  return (
+                    <span
+                      key={`${src}-${index}`}
+                      className="absolute bottom-0 right-0 h-[52px] w-[52px] overflow-hidden rounded-xl"
+                      style={{ transform: `translate(${-depth * 2}px, ${-depth * 2}px)` }}
+                    >
+                      <Image src={src} alt="" fill sizes="52px" className="object-cover" />
+                    </span>
+                  );
+                })}
+                {photos.length > 1 ? <span className="absolute bottom-0 right-0 flex h-[52px] w-[52px] items-center justify-center rounded-xl bg-black/35 text-sm font-semibold text-white">+{photos.length - 1}</span> : null}
+              </button>
+            ) : null}
+
+
+
+
+            <button type="button" aria-label="Back" onClick={onBack} className="absolute left-3 top-3 z-20 flex h-14 w-14 min-[900px]:left-4 min-[900px]:top-4 items-center justify-center rounded-2xl bg-black/20 text-white backdrop-blur-xl transition active:scale-95 hover:bg-black/30"><ArrowLeft className="h-7 w-7 min-[900px]:h-6 min-[900px]:w-6" /></button>
+          </div>
+
+          <div className={`row-start-2 hidden min-w-0 flex-col gap-2 p-3 min-[900px]:flex min-[900px]:bg-white min-[900px]:col-start-2 min-[900px]:row-start-2 min-[900px]:gap-6 min-[900px]:p-4 min-[900px]:pt-6`}>
+            <div className="flex flex-col gap-2 min-[900px]:gap-5">
+              <div className="hidden min-[900px]:block">
+                {template.categorySlug ? (
+                  <nav aria-label="Category" className="hidden min-[900px]:inline-flex h-8 min-[900px]:mb-3 min-[900px]:h-9 items-stretch divide-x divide-white/20 overflow-hidden rounded-xl bg-brand text-xs font-semibold text-white min-[900px]:text-sm">
+                    {categoryTrail?.parent ? (
+                      <Link href={`/categories/${categoryTrail.parent.slug}`} aria-label={`Browse ${categoryTrail.parent.name}`} className="inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25">
+                        <CategoryIcon icon={categoryTrail.parent.icon} className="h-4 w-4 shrink-0" />{categoryTrail.parent.name}
+                      </Link>
+                    ) : null}
+                    <Link href={`/categories/${template.categorySlug}`} aria-label={`Browse ${template.category}`} className={`inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25 ${categoryTrail?.parent ? "text-white/85" : ""}`}>
+                      {categoryTrail?.parent ? null : <CategoryIcon icon={categoryTrail?.category.icon} className="h-4 w-4 shrink-0" />}{template.category}
+                    </Link>
+                  </nav>
+                ) : null}
+                <h1 className="text-balance text-lg min-[900px]:text-[27px] font-semibold leading-tight tracking-tight">{template.name}</h1>
+                <DetailDescription description={template.description} tags={template.tags} />
+              </div>
+            {photos.length ? (
+              <button
+                type="button"
+                aria-label={`View gallery, ${photos.length} ${photos.length === 1 ? "photo" : "photos"}`}
+                title="View gallery"
+                onClick={() => setGalleryTemplate(template)}
+                className="relative hidden h-14 w-14 shrink-0 touch-manipulation rounded-2xl transition active:scale-95 min-[900px]:block"
+              >
+                {photos.slice(0, 3).reverse().map((src, index, images) => {
+                  const depth = images.length - 1 - index;
+                  return (
+                    <span
+                      key={`${src}-${index}`}
+                      className="absolute bottom-0 right-0 h-[52px] w-[52px] overflow-hidden rounded-xl"
+                      style={{ transform: `translate(${-depth * 2}px, ${-depth * 2}px)` }}
+                    >
+                      <Image src={src} alt="" fill sizes="52px" className="object-cover" />
+                    </span>
+                  );
+                })}
+                {photos.length > 1 ? <span className="absolute bottom-0 right-0 flex h-[52px] w-[52px] items-center justify-center rounded-xl bg-black/35 text-sm font-semibold text-white">+{photos.length - 1}</span> : null}
+              </button>
+            ) : null}
+              {suppliesSection ? <div className="hidden min-[900px]:block">{suppliesSection}</div> : null}
+            </div>
+
+            <div className="mt-auto hidden flex-col gap-2 min-[900px]:flex">
               <div className="grid auto-cols-fr grid-flow-col gap-2">
-                <button type="button" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="group flex h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-brand text-[13px] font-semibold text-white shadow-[0_6px_16px_rgba(0,0,0,0.18)] transition active:scale-95 hover:bg-brand/85 disabled:opacity-70">
-                  {downloading ? <LoaderCircle className="h-8 w-8 animate-spin" strokeWidth={1.8} /> : downloadDone ? <Check className="h-8 w-8 animate-icon-pop" strokeWidth={2.5} /> : canDownload ? <Download className="h-8 w-8 animate-icon-bob" strokeWidth={1.8} /> : <Lock className="h-8 w-8" strokeWidth={1.8} />}
+                <button type="button" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="group flex h-14 min-w-0 flex-row min-[900px]:h-24 min-[900px]:flex-col items-center justify-center gap-2 rounded-2xl bg-brand text-[13px] font-semibold text-white transition active:scale-95 hover:bg-brand/85 disabled:opacity-70">
+                  {downloading ? <LoaderCircle className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8 animate-spin" strokeWidth={1.8} /> : downloadDone ? <Check className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8 animate-icon-pop" strokeWidth={2.5} /> : canDownload ? <Download className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8 animate-icon-bob" strokeWidth={1.8} /> : <Lock className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8" strokeWidth={1.8} />}
                   {downloading ? "Getting it ready…" : downloadDone ? "Done!" : "Download"}
                 </button>
                 {template.canPrint ? (
-                  <button type="button" onClick={requestPrint} disabled={printing} aria-busy={printing} className="group flex h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-[#f2f2f2] text-[13px] font-semibold text-black transition active:scale-95 hover:bg-[#e9e9e9] disabled:opacity-70">
-                    {printing ? <LoaderCircle className="h-8 w-8 animate-spin" strokeWidth={1.8} /> : canDownload ? <Printer className="h-8 w-8 transition group-hover:scale-110" strokeWidth={1.8} /> : <Lock className="h-8 w-8" strokeWidth={1.8} />}
+                  <button type="button" onClick={requestPrint} disabled={printing} aria-busy={printing} className="group flex h-14 min-w-0 flex-row min-[900px]:h-24 min-[900px]:flex-col items-center justify-center gap-2 rounded-2xl bg-[#f2f2f2] text-[13px] font-semibold text-black transition active:scale-95 hover:bg-[#e9e9e9] disabled:opacity-70">
+                    {printing ? <LoaderCircle className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8 animate-spin" strokeWidth={1.8} /> : canDownload ? <Printer className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8 transition group-hover:scale-110" strokeWidth={1.8} /> : <Lock className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8" strokeWidth={1.8} />}
                     {printing ? "Getting it ready…" : "Print"}
                   </button>
                 ) : null}
               </div>
             </div>
           </div>
+        </div>
+        {suppliesSection ? <div className="mb-4 w-full min-[900px]:hidden">{suppliesSection}</div> : null}
         </div>
       ),
     },
@@ -1934,9 +2017,11 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
 
   return (
     <main className="fixed inset-0 flex w-screen max-w-none flex-col bg-white text-black">
-      <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} />
+      <div className="hidden shrink-0 md:block">
+        <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} />
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="w-full px-4 pb-16 pt-2 md:px-5 lg:px-6">
+        <div className="w-full px-3 pb-10 pt-2 md:px-5 md:pb-16 lg:px-6">
           <MasonryGrid tiles={tiles} />
         </div>
       </div>
@@ -1949,13 +2034,12 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
 
 const COLLAPSED_DESCRIPTION_LINES = 3;
 const COLLAPSED_TAG_COUNT = 4;
-const DESCRIPTION_LINE_HEIGHT = 24;
 
 type DescriptionSearch = { count: number; lo: number; hi: number; done: boolean };
 
 const tagHref = (tag: string) => `/tags/${tag.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
 
-function DetailDescription({ description, tags }: { description: string; tags: string[] }) {
+function DetailDescription({ description, tags, overlay = false }: { description: string; tags: string[]; overlay?: boolean }) {
   const textRef = useRef<HTMLParagraphElement | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -1986,30 +2070,31 @@ function DetailDescription({ description, tags }: { description: string; tags: s
     const container = textRef.current;
     const toggle = toggleRef.current;
     if (!container || !toggle) return;
-    const overflows = toggle.getBoundingClientRect().top - container.getBoundingClientRect().top >= DESCRIPTION_LINE_HEIGHT * COLLAPSED_DESCRIPTION_LINES;
+    const lineHeight = Number.parseFloat(window.getComputedStyle(container).lineHeight);
+    const overflows = toggle.getBoundingClientRect().top - container.getBoundingClientRect().top >= lineHeight * (overlay ? 1 : COLLAPSED_DESCRIPTION_LINES);
     const lo = overflows ? search.lo : search.count;
     const hi = overflows ? search.count - 1 : search.hi;
     if (lo >= hi || hi < 0) setSearch({ count: Math.max(0, lo), lo, hi: lo, done: true });
     else setSearch({ count: Math.ceil((lo + hi) / 2), lo, hi, done: false });
-  }, [expanded, search]);
+  }, [expanded, search, overlay]);
 
   if (!tokens.length && !tags.length) return null;
   const truncated = search.count < tokens.length;
   const showToggle = tokens.length > 0 && (expanded || !search.done || truncated);
   return (
-    <div className="mt-1.5">
+    <div className={overlay ? "mt-0.5" : "mt-1.5"}>
       {tokens.length ? (
-        <p ref={textRef} className="text-base leading-6 text-black/65">
+        <p ref={textRef} className={overlay ? "text-[11px] leading-[15px] text-white/90" : "text-xs leading-4 min-[900px]:text-base min-[900px]:leading-6 text-black/65"}>
           {expanded ? <span className="whitespace-pre-line">{description}</span> : tokens.slice(0, search.count).join(" ")}
           {!expanded && truncated ? "… " : " "}
-          {showToggle ? <button ref={toggleRef} type="button" onClick={() => setExpanded((current) => !current)} className="text-base font-semibold text-black">{expanded ? "Show less" : "Read more"}</button> : null}
+          {showToggle ? <button ref={toggleRef} type="button" onClick={() => setExpanded((current) => !current)} className={`font-semibold ${overlay ? "text-[11px] text-white" : "text-xs min-[900px]:text-base text-black"}`}>{expanded ? "Show less" : "Read more"}</button> : null}
         </p>
       ) : null}
       {tags.length ? (
-        <div className={`flex flex-wrap gap-2 ${tokens.length ? "mt-4" : ""}`}>
-          {(tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT)).map((tag) => <Link key={tag} href={tagHref(tag)} className="rounded-lg bg-[#f2f2f2] px-2.5 py-1 text-xs font-medium text-black/70 transition hover:bg-[#e9e9e9]">#{tag.replace(/\s+/g, "")}</Link>)}
+        <div className={`flex flex-wrap gap-2 ${tokens.length ? "mt-2 min-[900px]:mt-4" : ""}`}>
+          {(tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT)).map((tag) => <Link key={tag} href={tagHref(tag)} className="rounded-lg bg-white min-[900px]:bg-[#f2f2f2] px-2.5 py-1 text-xs font-medium text-black/70 transition hover:bg-[#e9e9e9]">#{tag.replace(/\s+/g, "")}</Link>)}
           {tags.length > COLLAPSED_TAG_COUNT ? (
-            <button type="button" onClick={() => setTagsExpanded((current) => !current)} className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-semibold text-black transition hover:bg-[#f2f2f2]">
+            <button type="button" onClick={() => setTagsExpanded((current) => !current)} className="rounded-lg bg-white min-[900px]:bg-[#f2f2f2] min-[900px]:border min-[900px]:border-black/10 px-2.5 py-1 text-xs font-semibold text-black transition hover:bg-[#f2f2f2]">
               {tagsExpanded ? "Show less" : `+${tags.length - COLLAPSED_TAG_COUNT} more`}
             </button>
           ) : null}
@@ -2477,7 +2562,7 @@ function TemplateGallery({ template, onClose }: { template: Template; onClose: (
   );
 }
 
-function DetailVideoPlayer({ template, active }: { template: Template; active: boolean }) {
+function DetailVideoPlayer({ template, active, mobileOverlay }: { template: Template; active: boolean; mobileOverlay?: ReactNode }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const speedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2672,12 +2757,13 @@ function DetailVideoPlayer({ template, active }: { template: Template; active: b
       ) : null}
       {!playing && active && hasMedia ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur"><Play className="ml-1 h-7 w-7" fill="currentColor" /></span>
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-black/55 text-white backdrop-blur"><Play className="ml-1 h-7 w-7" fill="currentColor" /></span>
         </div>
       ) : null}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent px-4 pb-4 pt-16">
-        {hasMedia ? <div className="pointer-events-auto flex items-center gap-3 text-xs text-white/85">
-          <span className="w-8 tabular-nums">{formatTime(currentTime)}</span>
+        {mobileOverlay ? <div className={`pointer-events-auto min-[900px]:hidden ${hasMedia ? "mb-2" : ""}`}>{mobileOverlay}</div> : null}
+        {hasMedia ? <div className="pointer-events-auto flex items-center gap-2 text-[10px] text-white/70">
+          <span className="shrink-0 tabular-nums">{formatTime(currentTime)}</span>
           <input
             type="range"
             aria-label={`Seek ${template.name}`}
@@ -2695,14 +2781,15 @@ function DetailVideoPlayer({ template, active }: { template: Template; active: b
                 setVideoCurrentTime(nextTime);
               }
             }}
-            className="h-5 min-w-0 flex-1 cursor-pointer accent-white"
+            className="detail-video-seek min-w-0 flex-1"
+            style={{ backgroundImage: `linear-gradient(to right, white ${duration > 0 ? Math.min(100, Math.max(0, currentTime / duration * 100)) : 0}%, rgb(255 255 255 / 25%) 0)` }}
           />
-          <span className="w-8 text-right tabular-nums">{formatTime(duration)}</span>
+          <span className="shrink-0 text-right tabular-nums">{formatTime(duration)}</span>
           <button
             type="button"
             aria-label={muted ? "Unmute video" : "Mute video"}
             onClick={() => setMuted((current) => !current)}
-            className={`flex h-9 w-9 items-center justify-center rounded-full bg-black/45 ${muted ? "text-white/50" : "text-white"}`}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center ${muted ? "text-white/50" : "text-white"}`}
           >
             {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </button>
@@ -2740,6 +2827,7 @@ function ReelMedia({ template, eager = false, hovered = false }: { template: Tem
   const embedThumbnail = useEmbedThumbnail(embed, shouldLoad && !(template.thumbnailUrl ?? template.galleryImages[0]));
   const [inView, setInView] = useState(false);
   const [videoDuration, setVideoDuration] = useState(0);
+  const [playingVideoSrc, setPlayingVideoSrc] = useState<string | null>(null);
   const durationSeconds = embed ? youtubeDuration : videoDuration;
   const canHover = useSyncExternalStore(subscribeToHoverCapability, () => window.matchMedia("(hover: hover)").matches, () => true);
 
@@ -2790,7 +2878,7 @@ function ReelMedia({ template, eager = false, hovered = false }: { template: Tem
   }
 
   return (
-    <div ref={containerRef} className="relative h-full w-full bg-black">
+    <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-[#f2eee8]">
       {previewImage ? <Image src={previewImage} alt="" fill sizes="(max-width: 639px) 50vw, (max-width: 767px) 33vw, (max-width: 1023px) 25vw, (max-width: 1279px) 17vw, 12vw" loading={eager ? "eager" : "lazy"} className="object-cover" /> : null}
       {embed ? (
         <>
@@ -2799,24 +2887,35 @@ function ReelMedia({ template, eager = false, hovered = false }: { template: Tem
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
           /> : null}
-          <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" style={{ opacity: youtubeStarted && (!previewImage || !canHover || hovered) ? 1 : 0 }} />
+          <div
+            ref={youtubeContainerRef}
+            className="absolute left-1/2 top-0 h-full -translate-x-1/2 overflow-hidden"
+            style={{
+              // YouTube fits inside its iframe; widen landscape embeds to crop them to the portrait card.
+              width: embed.provider === "youtube" ? `${Math.max(1, embedFallbackRatio(embed) / (9 / 16)) * 100}%` : "100%",
+              opacity: youtubeStarted && youtubeShouldPlay ? 1 : 0,
+            }}
+          />
         </>
       ) : videoSrc ? (
         <video
           ref={videoRef}
           className="absolute inset-0 h-full w-full object-cover"
+          style={{ opacity: playingVideoSrc === videoSrc ? 1 : 0 }}
           src={shouldLoad ? videoSrc : undefined}
           muted
           loop
           playsInline
           preload={eager ? "auto" : "metadata"}
           disablePictureInPicture
+          onPlaying={() => setPlayingVideoSrc(videoSrc ?? null)}
+          onError={() => setPlayingVideoSrc(null)}
           onCanPlay={(event) => { if (intersectingRef.current) event.currentTarget.play().catch(() => undefined); }}
           onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration || 0)}
         />
       ) : null}
       {!hovered && Number.isFinite(durationSeconds) && durationSeconds > 0 ? (
-        <span className="pointer-events-none absolute left-2.5 top-2.5 z-10 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold tabular-nums text-black">{formatVideoDuration(durationSeconds)}</span>
+        <span className="pointer-events-none absolute left-2.5 top-2.5 z-10 inline-flex items-center gap-1 rounded-full bg-black/25 px-2.5 py-1 text-[10px] font-semibold tabular-nums text-white shadow-sm backdrop-blur-2xl"><Play aria-hidden="true" className="h-3 w-3 shrink-0" fill="currentColor" />{formatVideoDuration(durationSeconds)}</span>
       ) : null}
     </div>
   );

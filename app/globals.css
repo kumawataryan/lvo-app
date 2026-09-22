@@ -294,3 +294,76 @@ input {
     cursor: pointer;
   }
 }
+.template-card-desktop-actions {
+  display: none;
+}
+
+@media (min-width: 1033px) and (hover: hover) and (pointer: fine) {
+  .template-card-actions-trigger {
+    display: none;
+  }
+
+  .template-card-desktop-actions {
+    display: flex;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+  }
+
+  .template-card:hover .template-card-desktop-actions,
+  .template-card:focus-within .template-card-desktop-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.detail-video-seek {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  background-color: transparent;
+  background-position: center;
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+}
+
+.detail-video-seek::-webkit-slider-runnable-track {
+  height: 2px;
+  border: 0;
+  background: transparent;
+}
+
+.detail-video-seek::-moz-range-track {
+  height: 2px;
+  border: 0;
+  background: transparent;
+}
+
+.detail-video-seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 8px;
+  height: 8px;
+  margin-top: -3px;
+  border: 0;
+  border-radius: 50%;
+  background: white;
+  box-shadow: none;
+}
+
+.detail-video-seek::-moz-range-thumb {
+  width: 8px;
+  height: 8px;
+  border: 0;
+  border-radius: 50%;
+  background: white;
+  box-shadow: none;
+}
+
+.detail-video-seek:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
