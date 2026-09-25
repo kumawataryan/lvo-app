@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#fff7de" />
+<title>7 Wonders Adventure Quiz</title>
+<script>
+  if (window.self === window.top) {
+    window.location.replace("/games/seven-wonders");
+  }
+</script>
+<style>
+  :root{
+    --ink:#23314d;
+    --muted:#68728c;
+    --paper:#fffdf7;
+    --yellow:#ffd75e;
+    --orange:#ff9f5a;
+    --blue:#7fd7ff;
+    --green:#70d6a5;
+    --pink:#ff9fc2;
+    --red:#ff7b7b;
+    --line:#e8e4d8;
+    --shadow:0 18px 50px rgba(35,49,77,.16);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    display:grid;place-items:center;
+    background:linear-gradient(145deg,#dff6ff,#fff2c7 48%,#ffe4ed);
+    font-family:ui-rounded,"Nunito","Arial Rounded MT Bold",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    color:var(--ink);
+    overflow:hidden;
+  }
+  button{font:inherit}
+  .reel{
+    position:relative;
+    width:min(100vw,540px);
+    height:min(100dvh,960px);
+    aspect-ratio:9/16;
+    overflow:hidden;
+    background:var(--paper);
+    box-shadow:var(--shadow);
+  }
+  @media (min-aspect-ratio:9/16){.reel{height:100dvh;width:auto}}
+  .screen{position:absolute;inset:0;padding:5.2% 5.5% 4%;display:none;flex-direction:column}
+  .screen.active{display:flex}
+  .blob{position:absolute;border-radius:999px;filter:blur(1px);opacity:.55;pointer-events:none}
+  .b1{width:44%;height:20%;background:#bcecff;top:-8%;left:-15%;transform:rotate(12deg)}
+  .b2{width:45%;height:22%;background:#ffe197;right:-18%;top:19%;transform:rotate(-12deg)}
+  .b3{width:45%;height:23%;background:#ffd1e0;left:-18%;bottom:-7%}
+  .content{position:relative;z-index:2;height:100%}
+  .start .content,.end .content{display:flex;flex-direction:column;align-items:center;text-align:center;justify-content:center}
+  .badge{display:inline-flex;align-items:center;gap:.45rem;background:#fff;border:2px solid var(--line);border-radius:999px;padding:.55rem .85rem;font-weight:900;font-size:clamp(11px,2.7vw,15px);box-shadow:0 7px 0 rgba(35,49,77,.06)}
+  .globe{font-size:clamp(78px,24vw,135px);line-height:1;margin:5% 0 1%;filter:drop-shadow(0 10px 0 rgba(35,49,77,.06));animation:float 2.6s ease-in-out infinite}
+  @keyframes float{50%{transform:translateY(-8px) rotate(2deg)}}
+  h1{font-size:clamp(34px,9vw,57px);line-height:.98;margin:3% 0 3%;letter-spacing:-.045em;max-width:92%}
+  .subtitle{font-weight:750;color:var(--muted);font-size:clamp(14px,3.6vw,20px);line-height:1.35;max-width:82%;margin:0 0 7%}
+  .startBtn,.primaryBtn{border:0;border-radius:22px;background:var(--yellow);color:var(--ink);font-weight:1000;font-size:clamp(18px,4.5vw,24px);padding:1rem 1.55rem;box-shadow:0 8px 0 #e4b93d;cursor:pointer;min-width:68%;transition:.15s transform,.15s box-shadow}
+  .startBtn:active,.primaryBtn:active{transform:translateY(5px);box-shadow:0 3px 0 #e4b93d}
+  .mini{margin-top:5%;font-weight:800;font-size:clamp(11px,2.7vw,14px);color:#7b8499}
+  .topbar{display:flex;align-items:center;gap:2.4%;height:7%}
+  .counter,.score{background:white;border:2px solid var(--line);border-radius:16px;font-weight:950;padding:.52rem .7rem;white-space:nowrap;font-size:clamp(11px,2.8vw,15px)}
+  .progress{flex:1;height:13px;background:#eee9dc;border-radius:999px;overflow:hidden;border:2px solid #e4dfd0}
+  .progressFill{height:100%;width:0;background:linear-gradient(90deg,var(--green),#5ac6ef);border-radius:999px;transition:width .35s ease}
+  .imageCard{position:relative;height:42%;margin-top:3.4%;border-radius:28px;overflow:hidden;background:#e8f5ff;border:3px solid #fff;box-shadow:0 12px 28px rgba(35,49,77,.16)}
+  .imageCard img{width:100%;height:100%;object-fit:cover;display:block}
+  .imageFallback{position:absolute;inset:0;display:none;place-items:center;background:linear-gradient(135deg,#aee7ff,#ffe1a0);font-size:clamp(70px,20vw,115px)}
+  .imageCard.loading:after{content:"Loading wonder…";position:absolute;inset:auto 4% 4%;background:rgba(255,255,255,.9);border-radius:999px;padding:.45rem .7rem;font-weight:900;font-size:12px;text-align:center}
+  .photoTag{position:absolute;left:4%;bottom:4%;background:rgba(255,255,255,.92);backdrop-filter:blur(5px);padding:.42rem .7rem;border-radius:999px;font-size:clamp(10px,2.4vw,13px);font-weight:900}
+  .questionBox{height:18%;display:flex;align-items:center;justify-content:center;text-align:center;padding:2% 4% 1%}
+  .question{font-weight:1000;font-size:clamp(22px,5.6vw,32px);line-height:1.08;letter-spacing:-.025em;margin:0}
+  .answers{display:grid;gap:2.2%;height:26%}
+  .answer{position:relative;border:2px solid #e4e1d8;background:#fff;border-radius:18px;padding:0 4%;min-height:0;cursor:pointer;text-align:left;color:var(--ink);font-weight:950;font-size:clamp(15px,3.8vw,21px);box-shadow:0 5px 0 #ddd9cd;transition:.14s transform,.14s border,.14s background,.14s box-shadow;display:flex;align-items:center;gap:3%}
+  .answer:hover{transform:translateY(-1px)}
+  .answer:active{transform:translateY(4px);box-shadow:0 1px 0 #ddd9cd}
+  .answer .letter{flex:0 0 auto;display:grid;place-items:center;width:34px;height:34px;border-radius:12px;background:#f4f1e8;font-size:.8em}
+  .answer.correct{background:#e8fff3;border-color:#55c88f;box-shadow:0 5px 0 #55c88f}
+  .answer.wrong{background:#fff0f0;border-color:#ff7777;box-shadow:0 5px 0 #ff7777}
+  .answer.dim{opacity:.55}
+  .feedback{position:absolute;z-index:5;left:5.5%;right:5.5%;bottom:4.6%;border-radius:20px;padding:.8rem 1rem;background:#fff;box-shadow:0 15px 34px rgba(35,49,77,.18);border:2px solid var(--line);display:none;align-items:center;justify-content:space-between;gap:.7rem;font-weight:900;font-size:clamp(13px,3.2vw,17px)}
+  .feedback.show{display:flex;animation:pop .23s ease-out}
+  @keyframes pop{from{transform:scale(.93);opacity:0}to{transform:scale(1);opacity:1}}
+  .nextBtn{border:0;background:var(--ink);color:#fff;border-radius:14px;padding:.65rem .85rem;font-weight:950;cursor:pointer;white-space:nowrap}
+  .stamp{position:absolute;z-index:6;right:8%;top:16%;font-size:clamp(68px,17vw,96px);transform:rotate(10deg) scale(0);filter:drop-shadow(0 8px 8px rgba(0,0,0,.16));pointer-events:none}
+  .stamp.show{animation:stamp .4s cubic-bezier(.2,1.35,.4,1) forwards}
+  @keyframes stamp{to{transform:rotate(10deg) scale(1)}}
+  .confetti{position:absolute;inset:0;pointer-events:none;z-index:10;overflow:hidden}
+  .confetti i{position:absolute;width:9px;height:16px;border-radius:3px;top:-10%;animation:fall 900ms ease-in forwards}
+  @keyframes fall{to{transform:translate(var(--x),115vh) rotate(560deg);opacity:.9}}
+  .trophy{font-size:clamp(80px,24vw,135px);line-height:1;margin:2% 0}
+  .end h2{font-size:clamp(33px,8.5vw,52px);line-height:1;margin:2% 0;letter-spacing:-.04em}
+  .bigScore{font-weight:1000;font-size:clamp(26px,7vw,40px);margin:2% 0 1%}
+  .stars{font-size:clamp(30px,8vw,46px);letter-spacing:.08em;margin:1% 0 4%}
+  .endText{font-size:clamp(14px,3.6vw,20px);line-height:1.35;font-weight:750;color:var(--muted);max-width:82%;margin-bottom:6%}
+  .secondaryBtn{border:2px solid var(--line);background:#fff;color:var(--ink);border-radius:18px;padding:.8rem 1.1rem;font-weight:900;margin-top:3%;cursor:pointer}
+  .credits{position:absolute;bottom:1.2%;left:0;right:0;text-align:center;font-size:9px;color:#9599a5;padding:0 5%;line-height:1.25}
+  .credits a{color:inherit}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+</style>
+</head>
+<body>
+<main class="reel" aria-label="7 Wonders of the World kids quiz">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+
+  <section class="screen start active" id="startScreen">
+    <div class="content">
+      <div class="badge">🌟 EASY KIDS QUIZ • 7 QUESTIONS</div>
+      <div class="globe" aria-hidden="true">🌍</div>
+      <h1>7 Wonders<br>Adventure!</h1>
+      <p class="subtitle">Look at the pictures, pick the easy answer, and collect stars around the world.</p>
+      <button class="startBtn" id="startBtn">🚀 Start Adventure</button>
+      <div class="mini">No timer • Big buttons • Instant feedback</div>
+    </div>
+  </section>
+
+  <section class="screen quiz" id="quizScreen">
+    <div class="content">
+      <div class="topbar">
+        <div class="counter" id="counter">1 / 7</div>
+        <div class="progress" aria-label="Quiz progress"><div class="progressFill" id="progressFill"></div></div>
+        <div class="score" id="score">⭐ 0</div>
+      </div>
+      <div class="imageCard loading" id="imageCard">
+        <img id="wonderImage" alt="Wonder of the world" />
+        <div class="imageFallback" id="imageFallback" aria-hidden="true">🌍</div>
+        <div class="photoTag" id="photoTag">World Wonder</div>
+      </div>
+      <div class="questionBox"><h2 class="question" id="question">Question</h2></div>
+      <div class="answers" id="answers"></div>
+    </div>
+    <div class="stamp" id="stamp">⭐</div>
+    <div class="feedback" id="feedback" role="status" aria-live="polite">
+      <span id="feedbackText">Great job!</span>
+      <button class="nextBtn" id="nextBtn">Next ➜</button>
+    </div>
+  </section>
+
+  <section class="screen end" id="endScreen">
+    <div class="content">
+      <div class="badge">🌎 WORLD EXPLORER</div>
+      <div class="trophy" id="trophy">🏆</div>
+      <h2 id="endTitle">Amazing!</h2>
+      <div class="bigScore" id="bigScore">You got 7 / 7</div>
+      <div class="stars" id="stars">⭐⭐⭐</div>
+      <p class="endText" id="endText">You visited all 7 wonders. Great exploring!</p>
+      <button class="primaryBtn" id="againBtn">🔁 Play Again</button>
+      <button class="secondaryBtn" id="shareBtn">📣 Share Score</button>
+    </div>
+    <div class="credits">Photos from Unsplash: Fahrul Azmi, Andrew Scarborough, Aleksei Filimonov, Ruben Ramirez, Alex Azabache, Persnickety Prints & NICO BHLR.</div>
+  </section>
+
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
+</main>
+<script>
+(() => {
+  const quiz = [
+    {
+      wonder:"Taj Mahal", tag:"Taj Mahal • India", emoji:"🕌",
+      image:"https://images.unsplash.com/photo-1532886221698-4bf090e59e72?auto=format&fit=crop&fm=jpg&q=78&w=1200",
+      question:"What is this beautiful white wonder?",
+      options:["Taj Mahal","Great Wall of China","Colosseum"], answer:0,
+      fact:"Yes! The Taj Mahal is in India. 🇮🇳"
+    },
+    {
+      wonder:"Great Wall of China", tag:"Great Wall • China", emoji:"🏯",
+      image:"https://images.unsplash.com/photo-1509376159-27f57325a3b6?auto=format&fit=crop&fm=jpg&q=78&w=1200",
+      question:"Which country has the Great Wall?",
+      options:["China","Brazil","Italy"], answer:0,
+      fact:"Yes! The Great Wall is in China. 🇨🇳"
+    },
+    {
+      wonder:"Petra", tag:"Petra • Jordan", emoji:"🏛️",
+      image:"https://images.unsplash.com/photo-1771692675339-12fa69ed0a59?auto=format&fit=crop&fm=jpg&q=78&w=1200",
+      question:"What is this wonder carved into rock?",
+      options:["Petra","Machu Picchu","Taj Mahal"], answer:0,
+      fact:"Yes! This is Petra in Jordan. 🇯🇴"
+    },
+    {
+      wonder:"Colosseum", tag:"Colosseum • Italy", emoji:"🏟️",
+      image:"https://images.unsplash.com/photo-1513120052856-2b18c0d4f696?auto=format&fit=crop&fm=jpg&q=78&w=1200",
+      question:"Which country is the Colosseum in?",
+      options:["Italy","Peru","Mexico"], answer:0,
+      fact:"Yes! The Colosseum is in Rome, Italy. 🇮🇹"
+    },
+    {
+      wonder:"Chichén Itzá", tag:"Chichén Itzá • Mexico", emoji:"🔺",
+      image:"https://images.unsplash.com/photo-1568402102990-bc541580b59f?auto=format&fit=crop&fm=jpg&q=78&w=1200",
+      question:"Which wonder looks like a giant step pyramid?",
+      options:["Chichén Itzá","Christ the Redeemer","Great Wall of China"], answer:0,
+      fact:"Yes! Chichén Itzá is in Mexico. 🇲🇽"
+    },
+    {
+      wonder:"Machu Picchu", tag:"Machu Picchu • Peru", emoji:"⛰️",
+      image:"https://images.unsplash.com/photo-1536704457276-2271a3d53915?auto=format&fit=crop&fm=jpg&q=78&w=1200",
+      question:"Machu Picchu is in which country?",
+      options:["Peru","China","Jordan"], answer:0,
+      fact:"Yes! Machu Picchu is high in the mountains of Peru. 🇵🇪"
+    },
+    {
+      wonder:"Christ the Redeemer", tag:"Christ the Redeemer • Brazil", emoji:"🗿",
+      image:"https://images.unsplash.com/photo-1537349765637-d0bb230c9604?auto=format&fit=crop&fm=jpg&q=78&w=1200",
+      question:"Which famous wonder is in Rio de Janeiro?",
+      options:["Christ the Redeemer","Petra","Colosseum"], answer:0,
+      fact:"Yes! Christ the Redeemer is in Brazil. 🇧🇷"
+    }
+  ];
+
+  const $ = (s) => document.querySelector(s);
+  const startScreen = $('#startScreen'), quizScreen = $('#quizScreen'), endScreen = $('#endScreen');
+  const counter = $('#counter'), progressFill = $('#progressFill'), scoreEl = $('#score');
+  const imageCard = $('#imageCard'), wonderImage = $('#wonderImage'), imageFallback = $('#imageFallback'), photoTag = $('#photoTag');
+  const questionEl = $('#question'), answersEl = $('#answers'), feedback = $('#feedback'), feedbackText = $('#feedbackText');
+  const nextBtn = $('#nextBtn'), stamp = $('#stamp'), confetti = $('#confetti');
+  let index = 0, score = 0, locked = false;
+
+  function show(screen){[startScreen,quizScreen,endScreen].forEach(s=>s.classList.remove('active'));screen.classList.add('active')}
+  function tone(freq=520,duration=.08,type='sine'){
+    try{
+      const AudioCtx=window.AudioContext||window.webkitAudioContext; const ctx=new AudioCtx();
+      const osc=ctx.createOscillator(), gain=ctx.createGain();
+      osc.type=type; osc.frequency.value=freq; gain.gain.setValueAtTime(.07,ctx.currentTime); gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+duration);
+      osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime+duration); osc.onended=()=>ctx.close();
+    }catch(e){}
+  }
+  function celebrate(){
+    const colors=['#ffd75e','#70d6a5','#7fd7ff','#ff9fc2','#ff9f5a'];
+    for(let i=0;i<24;i++){
+      const p=document.createElement('i'); p.style.left=(10+Math.random()*80)+'%'; p.style.background=colors[i%colors.length];
+      p.style.setProperty('--x',((Math.random()-.5)*190)+'px'); p.style.animationDelay=(Math.random()*120)+'ms'; p.style.transform=`rotate(${Math.random()*180}deg)`;
+      confetti.appendChild(p); setTimeout(()=>p.remove(),1200);
+    }
+  }
+  function preload(){quiz.forEach(q=>{const im=new Image(); im.src=q.image;});}
+
+  function render(){
+    locked=false; feedback.classList.remove('show'); stamp.classList.remove('show');
+    const q=quiz[index];
+    counter.textContent=`${index+1} / ${quiz.length}`;
+    progressFill.style.width=`${((index+1)/quiz.length)*100}%`;
+    scoreEl.textContent=`⭐ ${score}`;
+    questionEl.textContent=q.question; photoTag.textContent=q.tag;
+    imageFallback.textContent=q.emoji; imageFallback.style.display='none'; imageCard.classList.add('loading');
+    wonderImage.alt=q.tag; wonderImage.onload=()=>{imageCard.classList.remove('loading'); imageFallback.style.display='none'};
+    wonderImage.onerror=()=>{imageCard.classList.remove('loading'); imageFallback.style.display='grid'; wonderImage.removeAttribute('src')};
+    wonderImage.src=q.image;
+    answersEl.innerHTML='';
+    q.options.forEach((opt,i)=>{
+      const btn=document.createElement('button'); btn.className='answer'; btn.type='button';
+      btn.innerHTML=`<span class="letter">${String.fromCharCode(65+i)}</span><span>${opt}</span>`;
+      btn.addEventListener('click',()=>choose(i,btn)); answersEl.appendChild(btn);
+    });
+  }
+
+  function choose(choice,btn){
+    if(locked)return; locked=true; const q=quiz[index]; const buttons=[...answersEl.children];
+    buttons.forEach((b,i)=>{if(i===q.answer)b.classList.add('correct'); else if(i===choice)b.classList.add('wrong'); else b.classList.add('dim'); b.disabled=true;});
+    if(choice===q.answer){score++;scoreEl.textContent=`⭐ ${score}`;feedbackText.textContent=`⭐ ${q.fact}`;stamp.textContent='⭐';stamp.classList.add('show');tone(660,.09);setTimeout(()=>tone(880,.11),95);celebrate();}
+    else{feedbackText.textContent=`Nice try! The answer is ${q.options[q.answer]}.`;stamp.textContent='💡';stamp.classList.add('show');tone(240,.12,'triangle');}
+    nextBtn.textContent=index===quiz.length-1?'See Score 🏆':'Next ➜'; feedback.classList.add('show');
+  }
+
+  function finish(){
+    show(endScreen); $('#bigScore').textContent=`You got ${score} / ${quiz.length}`;
+    let title,text,stars,trophy;
+    if(score===7){title='Wonder Superstar!';text='Perfect score! You explored all 7 wonders like a world expert.';stars='⭐⭐⭐';trophy='🏆';celebrate();}
+    else if(score>=5){title='Great Explorer!';text='Amazing trip! You know lots about the 7 wonders.';stars='⭐⭐⭐';trophy='🌟';}
+    else if(score>=3){title='Super Trip!';text='Nice exploring! Play again and collect even more stars.';stars='⭐⭐☆';trophy='🧭';}
+    else{title='Good Adventure!';text='You visited all 7 wonders. Try again and beat your score!';stars='⭐☆☆';trophy='🌍';}
+    $('#endTitle').textContent=title;$('#endText').textContent=text;$('#stars').textContent=stars;$('#trophy').textContent=trophy;
+  }
+
+  $('#startBtn').addEventListener('click',()=>{index=0;score=0;show(quizScreen);render();tone(520,.07);});
+  nextBtn.addEventListener('click',()=>{if(index<quiz.length-1){index++;render();tone(500,.06);}else finish();});
+  $('#againBtn').addEventListener('click',()=>{index=0;score=0;show(quizScreen);render();});
+  $('#shareBtn').addEventListener('click',async()=>{
+    const text=`I scored ${score}/${quiz.length} on the 7 Wonders Kids Quiz! 🌍⭐`;
+    try{if(navigator.share) await navigator.share({title:'7 Wonders Kids Quiz',text}); else{await navigator.clipboard.writeText(text);$('#shareBtn').textContent='✅ Score Copied!';setTimeout(()=>$('#shareBtn').textContent='📣 Share Score',1500);}}
+    catch(e){}
+  });
+  preload();
+})();
+</script>
+</body>
+</html>

@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowLeft, Play, Search, X } from "lucide-react";
+import { Play, Search, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { BottomNav, tabRoute } from "@/components/craft-app";
+import { BottomNav, TemplateTopBar, tabRoute } from "@/components/craft-app";
 import type { CraftClassVideo } from "@/lib/craft-classes";
 
 export function CraftClassesScreen({ classes }: { classes: CraftClassVideo[] }) {
@@ -23,17 +23,13 @@ export function CraftClassesScreen({ classes }: { classes: CraftClassVideo[] }) 
   return (
     <main className="fixed inset-0 bg-[var(--background)] text-black">
       <div className="relative mx-auto flex h-dvh w-full flex-col overflow-hidden bg-white">
-        <header className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[calc(16px+env(safe-area-inset-top))] md:px-5 lg:px-6">
-          <button
-            type="button"
-            aria-label="Back to categories"
-            onClick={() => router.push("/browse")}
-            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">Craft Classes</h1>
-        </header>
+        <TemplateTopBar
+          activeCategory=""
+          onCategoryChange={() => undefined}
+          categoriesOverride={[]}
+          activeTab="browse"
+          onTabChange={(tab) => router.push(tabRoute(tab))}
+        />
 
         <div className="shrink-0 px-4 pb-1 pt-2 md:px-5 lg:px-6">
           <label className="flex h-12 max-w-md items-center gap-2.5 rounded-2xl bg-[#f2f2f2] px-4">

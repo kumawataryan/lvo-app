@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowLeft, Maximize2, Minimize2, Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { Maximize2, Minimize2, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { BottomNav, tabRoute } from "@/components/craft-app";
+import { BottomNav, TemplateTopBar, tabRoute } from "@/components/craft-app";
 import type { CraftClassVideo } from "@/lib/craft-classes";
 import { parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { useYoutubePlayer } from "@/lib/youtube/use-youtube-player";
@@ -83,15 +83,17 @@ export function CraftClassVideoScreen({ craftClass }: { craftClass: CraftClassVi
 
   return (
     <main className="fixed inset-0 bg-[var(--background)] text-black">
-      <div className={`relative mx-auto flex h-dvh w-full flex-col bg-white ${expanded ? "max-w-none overflow-visible" : "max-w-[430px] overflow-hidden"}`}>
-        <header className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-[calc(16px+env(safe-area-inset-top))]">
-          <button type="button" aria-label="Back to craft classes" onClick={() => router.push("/craft-classes")} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#f2f2f2] transition active:scale-95">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight">{video.title}</h1>
-        </header>
+      <div className={`relative mx-auto flex h-dvh w-full flex-col bg-white ${expanded ? "max-w-none overflow-visible" : "overflow-hidden"}`}>
+        <TemplateTopBar
+          activeCategory=""
+          onCategoryChange={() => undefined}
+          categoriesOverride={[]}
+          activeTab="browse"
+          onTabChange={(tab) => router.push(tabRoute(tab))}
+        />
+        <h1 className="px-4 pt-2 text-lg font-semibold tracking-tight md:px-5 lg:px-6">{video.title}</h1>
 
-        <section className="min-h-0 flex-1 overflow-y-auto px-4 pb-32 pt-3">
+        <section className="min-h-0 w-full max-w-[430px] flex-1 self-center overflow-y-auto px-4 pb-32 pt-3">
           <div ref={videoFrameRef} className={`${expanded ? "fixed inset-0 z-[100] flex h-dvh w-dvw flex-col justify-center rounded-none bg-white" : "overflow-hidden rounded-[18px] bg-white"} fullscreen:flex fullscreen:h-screen fullscreen:w-screen fullscreen:flex-col fullscreen:justify-center fullscreen:rounded-none`}>
             <div className="relative aspect-video overflow-hidden rounded-[18px] bg-black fullscreen:w-full fullscreen:rounded-none">
               <div ref={playerContainerRef} className="absolute inset-0 overflow-hidden" />

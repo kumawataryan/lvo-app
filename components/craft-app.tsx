@@ -594,6 +594,16 @@ export function BrowseTabContent() {
             </span>
             <ChevronRight aria-hidden="true" className="h-4 w-4 text-white/45" strokeWidth={2} />
           </button>
+          <Link
+            href="/games"
+            className="flex h-14 items-center justify-between rounded-2xl bg-brand px-4 text-white transition hover:bg-brand/90 active:scale-[0.98]"
+          >
+            <span className="flex items-center gap-2">
+              <Puzzle aria-hidden="true" className="h-5 w-5 text-white" strokeWidth={2.25} />
+              <span className="text-[15px] font-semibold">Games</span>
+            </span>
+            <ChevronRight aria-hidden="true" className="h-4 w-4 text-white/45" strokeWidth={2} />
+          </Link>
         </div>
       </div>
     </section>
