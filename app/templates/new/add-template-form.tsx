@@ -88,8 +88,8 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
       event.target.value = "";
       return;
     }
-    if (file && file.size > 25 * 1024 * 1024) {
-      setError("Printable must be smaller than 25 MB.");
+    if (file && file.size > 150 * 1024 * 1024) {
+      setError("Printable must be smaller than 150 MB.");
       event.target.value = "";
       return;
     }
@@ -440,7 +440,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
               required={!editing}
               icon={<FileText className="h-5 w-5" />}
               title={printable?.name ?? (existingPrintablePath ? filenameFromPath(existingPrintablePath) : "Printable file")}
-              detail={printable ? `${formatFileSize(printable.size)} · Ready to upload` : existingPrintablePath ? "Already uploaded" : "Required · PDF, ZIP, JPG, PNG, or WebP · up to 25 MB"}
+              detail={printable ? `${formatFileSize(printable.size)} · Ready to upload` : existingPrintablePath ? "Already uploaded" : "Required · PDF, ZIP, JPG, PNG, or WebP · up to 150 MB"}
               selected={hasPrintable}
               accept={PRINTABLE_ACCEPT}
               onChange={selectPrintable}
