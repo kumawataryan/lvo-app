@@ -11,6 +11,9 @@ export const metadata: Metadata = {
   title: "Lovely Vibes Only Craft Library",
   description: "Premium art and craft templates for calm, easy making.",
   robots: { index: false, follow: false },
+  other: {
+    "google-adsense-account": "ca-pub-6918828347390330",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

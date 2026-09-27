@@ -1347,7 +1347,7 @@ function TemplateFeed(props: {
           <div key={template.id} className="mb-5 break-inside-avoid md:mb-6">
             <TemplateCard
               template={template}
-              eager={index < 9}
+              eager={index < 2}
               onOpenDetail={() => props.onOpenDetail(template)}
               interactions={props.interactions}
               subscribed={props.subscribed}
@@ -1454,6 +1454,15 @@ export function TemplateCard({
       onPointerLeave={() => setHovered(false)}
     >
       <ReelMedia template={template} eager={eager} hovered={hovered} />
+      {onOpenDetail ? (
+        <Link
+          href={`/t/${template.id}`}
+          aria-label={`View ${template.name}`}
+          className="absolute inset-0 z-[1] rounded-[22px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+          onClick={(event) => event.stopPropagation()}
+          onNavigate={(event) => { event.preventDefault(); onOpenDetail(); }}
+        />
+      ) : null}
       {statusIcon ? (
         <span aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md">
           {statusIcon === "like" ? <Heart className="h-4 w-4" fill="currentColor" /> : <Bookmark className="h-4 w-4" fill="currentColor" />}
