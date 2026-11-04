@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { CategoryDetailScreen } from "@/components/craft-app";
+import { getSessionUser } from "@/lib/auth/session";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import { getCachedCategoryPage } from "@/lib/templates/cached";
@@ -19,9 +20,8 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
 
   const supabase = await createSupabaseAuthServerClient();
   const pagePromise = getCachedCategoryPage(slug);
-  const purchasePromise = supabase.auth.getUser()
-    .then(({ data: { user } }) => (user ? getActivePurchase(supabase, user.id).catch(() => null) : null))
-    .catch(() => null);
+  const purchasePromise = getSessionUser(supabase)
+    .then((user) => (user ? getActivePurchase(supabase, user.id).catch(() => null) : null));
   const [data, purchase] = await Promise.all([pagePromise, purchasePromise]);
 
   const category = data?.category ?? fallbackCategory;

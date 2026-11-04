@@ -196,7 +196,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return Response.json({ error: error instanceof Error ? error.message : "Could not save template details." }, { status: 400 });
   }
 
-  revalidateTag("templates", "max");
+  revalidateTag("templates", { expire: 0 });
   return Response.json({ id: templateId }, { status: 200 });
 }
 
@@ -238,6 +238,6 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     supabasePaths.length ? supabase.storage.from("template-media").remove(supabasePaths) : Promise.resolve(),
   ]).catch(() => undefined);
 
-  revalidateTag("templates", "max");
+  revalidateTag("templates", { expire: 0 });
   return Response.json({ ok: true });
 }

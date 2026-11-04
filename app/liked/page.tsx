@@ -1,3 +1,4 @@
+import { getSessionUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LikedPage() {
   const supabase = await createSupabaseAuthServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser(supabase);
   if (!user) redirect("/login");
 
   const [onboarding, { data: likes }, publishedTemplates, subscribed] = await Promise.all([

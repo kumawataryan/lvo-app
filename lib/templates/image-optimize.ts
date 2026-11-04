@@ -23,6 +23,8 @@ async function loadImage(file: File): Promise<ImageBitmap | HTMLImageElement> {
 /** Resizes to a max 2048px edge and re-encodes as WebP so gallery/featured images use minimal storage. Falls back to the original file if the browser can't do canvas/WebP encoding. */
 export async function optimizeImageToWebp(file: File): Promise<File> {
   if (typeof document === "undefined") return file;
+  // Already small web-friendly images upload as-is; re-encoding would only cost time.
+  if (file.size <= 300 * 1024 && /^image\/(webp|jpeg|png)$/.test(file.type)) return file;
   try {
     const image = await loadImage(file);
     const scale = Math.min(1, MAX_DIMENSION / Math.max(image.width, image.height));

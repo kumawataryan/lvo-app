@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import AppShell from "@/components/craft-app";
+import { getSessionUser } from "@/lib/auth/session";
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { getActivePurchase } from "@/lib/payments/repository";
@@ -16,7 +17,7 @@ export default async function TabsLayout({ children }: { children: ReactNode }) 
 
   const supabase = await createSupabaseAuthServerClient();
   // Everything below runs in parallel: public data is cached, user data is fetched concurrently.
-  const userPromise = supabase.auth.getUser().then(({ data }) => data.user).catch(() => null);
+  const userPromise = getSessionUser(supabase);
   const purchasePromise = userPromise.then((user) => (user ? getActivePurchase(supabase, user.id).catch(() => null) : null));
   const onboardingPromise = userPromise.then((user) => (user ? getFamilyOnboarding(supabase, user.id).catch(() => null) : undefined));
   const [initialTemplates, initialCategories, user, purchase, onboarding] = await Promise.all([

@@ -198,6 +198,6 @@ export async function POST(request: Request) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not save template details." }, { status: 400 });
   }
 
-  revalidateTag("templates", "max");
+  revalidateTag("templates", { expire: 0 });
   return Response.json({ id: templateId, slug, status }, { status: 201 });
 }

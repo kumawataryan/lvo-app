@@ -51,6 +51,18 @@ function filenameFromPath(path: string) {
   return path.split("/").pop() || path;
 }
 
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await worker(items[index], index);
+    }
+  }));
+  return results;
+}
+
 export function AddTemplateForm({ categories, subscribed = false, initialData }: { categories: Category[]; subscribed?: boolean; initialData?: InitialTemplateData }) {
   const router = useRouter();
   const editing = Boolean(initialData);
@@ -177,9 +189,10 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
     try {
       const [printablePath, mediaPaths] = await Promise.all([
         printable ? uploadToDropbox(printable) : Promise.resolve(existingPrintablePath),
-        Promise.all(images.map((image, index) => (image.kind === "new"
+        // Featured image first, then the rest through a small pool so uploads don't fight for bandwidth/CPU.
+        mapWithConcurrency(images, 6, (image, index) => (image.kind === "new"
           ? uploadToSupabase(index === 0 ? "thumbnail" : "gallery", image.file, index === 0 ? undefined : index - 1)
-          : Promise.resolve(image.path)))),
+          : Promise.resolve(image.path))),
       ]);
       const [thumbnailPath = "", ...galleryPaths] = mediaPaths;
 
@@ -225,8 +238,8 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
       }
 
       setStatus(editing ? "Saved" : "Published");
+      // replace() already renders the destination fresh; a separate refresh() would re-render everything a second time.
       router.replace(editing ? "/templates/manage" : `/t/${result.id}`);
-      router.refresh();
     } catch (caughtError) {
       if (uploadedToDropbox.length) {
         await fetch("/api/dropbox/delete", {

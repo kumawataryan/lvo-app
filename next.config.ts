@@ -8,7 +8,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }];
   },
+  // Keep visited pages in the client router cache so back/forward and repeat taps are instant.
+  experimental: { staleTimes: { dynamic: 30, static: 300 } },
   images: {
+    // Vercel's image CDN keeps optimized images for 31 days instead of re-fetching/re-optimizing them.
+    minimumCacheTTL: 60 * 60 * 24 * 31,
     localPatterns: [
       {
         pathname: "/**",
