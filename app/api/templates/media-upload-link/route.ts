@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid upload request." }, { status: 400 });
   }
   if (!["jpg", "jpeg", "png", "webp"].includes(extension)) return Response.json({ error: "Unsupported file type." }, { status: 400 });
-  if (folder === "gallery" && (!Number.isInteger(index) || index < 0 || index > 9)) {
+  if (folder === "gallery" && (!Number.isInteger(index) || index < 0 || index > 29)) {
     return Response.json({ error: "Invalid gallery position." }, { status: 400 });
   }
 

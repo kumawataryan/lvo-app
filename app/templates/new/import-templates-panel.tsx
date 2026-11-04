@@ -104,7 +104,7 @@ function resolveRow(index: number, raw: CsvRecord, categories: Category[], fileM
     if (!featuredImageFile) errors.push(`Featured image "${featuredImageName}" was not found in the selected folder.`);
   }
 
-  const galleryNames = splitList(raw.galleryimages ?? "").slice(0, 20);
+  const galleryNames = splitList(raw.galleryimages ?? "").slice(0, 30);
   const galleryFiles: File[] = [];
   for (const name of galleryNames) {
     const file = fileMap.get(basename(name).toLowerCase());

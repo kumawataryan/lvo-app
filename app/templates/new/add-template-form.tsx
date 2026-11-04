@@ -33,7 +33,7 @@ export type InitialTemplateData = {
   images: Array<{ path: string; url: string }>;
 };
 
-const MAX_IMAGES = 20;
+const MAX_IMAGES = 30;
 const PRINTABLE_EXTENSIONS = ["pdf", "zip", "jpg", "jpeg", "png", "webp"];
 const PRINTABLE_ACCEPT = "application/pdf,application/zip,application/x-zip-compressed,image/jpeg,image/png,image/webp";
 

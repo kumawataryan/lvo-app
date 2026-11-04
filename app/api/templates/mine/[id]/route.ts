@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { deleteDropboxFile } from "@/lib/dropbox/server";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -72,7 +73,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const thumbnailPath = typeof body.thumbnailPath === "string" ? body.thumbnailPath : "";
   const printablePath = typeof body.printablePath === "string" ? body.printablePath : "";
   const isFree = body.isFree === true;
-  const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 10) : [];
+  const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 30) : [];
   const supplies = Array.isArray(body.supplies)
     ? [...new Set(body.supplies.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 20)
     : [];
@@ -188,6 +189,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return Response.json({ error: error instanceof Error ? error.message : "Could not save template details." }, { status: 400 });
   }
 
+  revalidateTag("templates", "max");
   return Response.json({ id: templateId }, { status: 200 });
 }
 
@@ -229,5 +231,6 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     supabasePaths.length ? supabase.storage.from("template-media").remove(supabasePaths) : Promise.resolve(),
   ]).catch(() => undefined);
 
+  revalidateTag("templates", "max");
   return Response.json({ ok: true });
 }

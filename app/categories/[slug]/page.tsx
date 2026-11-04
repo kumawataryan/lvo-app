@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { CategoryDetailScreen } from "@/components/craft-app";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
-import { getTemplateCategoryBySlug, listPublishedTemplates, listTemplateSubcategories } from "@/lib/templates/repository";
+import { getCachedCategoryPage } from "@/lib/templates/cached";
 import { ALL_TEMPLATE_CATEGORIES } from "@/lib/templates/types";
 
 export const dynamic = "force-dynamic";
@@ -18,30 +18,20 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
   }
 
   const supabase = await createSupabaseAuthServerClient();
-  const [category, { data: { user } }] = await Promise.all([
-    getTemplateCategoryBySlug(slug).catch(() => fallbackCategory ?? null),
-    supabase.auth.getUser().catch(() => ({ data: { user: null } })),
-  ]);
+  const pagePromise = getCachedCategoryPage(slug);
+  const purchasePromise = supabase.auth.getUser()
+    .then(({ data: { user } }) => (user ? getActivePurchase(supabase, user.id).catch(() => null) : null))
+    .catch(() => null);
+  const [data, purchase] = await Promise.all([pagePromise, purchasePromise]);
 
+  const category = data?.category ?? fallbackCategory;
   if (!category) notFound();
-  const subcategories = await listTemplateSubcategories(category.id).catch(() => []);
-  const [parentTemplates, ...subcategoryResults] = await Promise.all([
-    listPublishedTemplates({ category: slug }).catch(() => []),
-    ...subcategories.map((subcategory) => listPublishedTemplates({ category: subcategory.slug }).catch(() => [])),
-  ]);
-  const subcategoryTemplates = Object.fromEntries(
-    subcategories.map((subcategory, index) => [subcategory.slug, subcategoryResults[index] ?? []]),
-  );
-  const templates = Array.from(
-    new Map([...parentTemplates, ...subcategoryResults.flat()].map((template) => [template.id, template])).values(),
-  );
-  const purchase = user ? await getActivePurchase(supabase, user.id).catch(() => null) : null;
 
   return <CategoryDetailScreen
     category={category}
-    subcategories={subcategories}
-    initialTemplates={templates}
-    subcategoryTemplates={subcategoryTemplates}
+    subcategories={data?.subcategories ?? []}
+    initialTemplates={data?.templates ?? []}
+    subcategoryTemplates={data?.subcategoryTemplates ?? {}}
     subscribed={Boolean(purchase)}
   />;
 }

@@ -5,24 +5,14 @@ import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { hasActiveSubscription } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
-import { getPublishedTemplateById, getTemplateCategoryTrail, listPublishedTemplates } from "@/lib/templates/repository";
+import { getCachedTemplateContent } from "@/lib/templates/cached";
 
 export const dynamic = "force-dynamic";
-
-const RELATED_TEMPLATE_LIMIT = 49;
 
 export default async function TemplatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   // Content and account checks are independent; only related content needs the template first.
-  const contentPromise = (async () => {
-    const template = await getPublishedTemplateById(id).catch(() => null);
-    if (!template) return null;
-    const [relatedResult, categoryTrail] = await Promise.all([
-      listPublishedTemplates({ category: template.category.slug, limit: RELATED_TEMPLATE_LIMIT }).catch(() => []),
-      getTemplateCategoryTrail(template.category.id).catch(() => null),
-    ]);
-    return { template, related: relatedResult.filter((item) => item.id !== template.id), categoryTrail };
-  })();
+  const contentPromise = getCachedTemplateContent(id);
   const accountPromise = (async () => {
     const supabase = await createSupabaseAuthServerClient();
     const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));

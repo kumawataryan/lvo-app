@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
   const printablePath = typeof body.printablePath === "string" ? body.printablePath : "";
   const isFree = body.isFree === true;
   const status = body.status === "draft" ? "draft" : "published";
-  const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 10) : [];
+  const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 30) : [];
   const supplies = Array.isArray(body.supplies)
     ? [...new Set(body.supplies.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 20)
     : [];
@@ -190,5 +191,6 @@ export async function POST(request: Request) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not save template details." }, { status: 400 });
   }
 
+  revalidateTag("templates", "max");
   return Response.json({ id: templateId, slug, status }, { status: 201 });
 }

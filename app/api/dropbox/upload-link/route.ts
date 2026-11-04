@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     ? ["pdf", "zip", "jpg", "jpeg", "png", "webp"].includes(extension)
     : ["jpg", "jpeg", "png", "webp"].includes(extension);
   if (!extensionAllowed) return Response.json({ error: "Unsupported file type." }, { status: 400 });
-  if (folder === "gallery" && (!Number.isInteger(index) || index < 0 || index > 9)) {
+  if (folder === "gallery" && (!Number.isInteger(index) || index < 0 || index > 29)) {
     return Response.json({ error: "Invalid gallery position." }, { status: 400 });
   }
 

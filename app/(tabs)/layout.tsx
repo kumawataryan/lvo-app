@@ -6,10 +6,8 @@ import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
-import { listPublishedTemplates, listRootTemplateCategories } from "@/lib/templates/repository";
+import { getCachedCategories, getCachedTemplates } from "@/lib/templates/cached";
 import { DEFAULT_TEMPLATE_CATEGORIES } from "@/lib/templates/types";
-
-export const dynamic = "force-dynamic";
 
 export default async function TabsLayout({ children }: { children: ReactNode }) {
   if (!isSupabaseConfigured()) {
@@ -17,25 +15,22 @@ export default async function TabsLayout({ children }: { children: ReactNode }) 
   }
 
   const supabase = await createSupabaseAuthServerClient();
-  const [initialTemplates, initialCategories, { data: { user } }] = await Promise.all([
-    listPublishedTemplates().catch((error) => {
-      console.error("Failed to preload templates", error);
-      return [];
-    }),
-    listRootTemplateCategories().catch((error) => {
-      console.error("Failed to preload template categories", error);
-      return DEFAULT_TEMPLATE_CATEGORIES;
-    }),
-    supabase.auth.getUser().catch(() => ({ data: { user: null } })),
+  // Everything below runs in parallel: public data is cached, user data is fetched concurrently.
+  const userPromise = supabase.auth.getUser().then(({ data }) => data.user).catch(() => null);
+  const purchasePromise = userPromise.then((user) => (user ? getActivePurchase(supabase, user.id).catch(() => null) : null));
+  const onboardingPromise = userPromise.then((user) => (user ? getFamilyOnboarding(supabase, user.id).catch(() => null) : undefined));
+  const [initialTemplates, initialCategories, user, purchase, onboarding] = await Promise.all([
+    getCachedTemplates(),
+    getCachedCategories(),
+    userPromise,
+    purchasePromise,
+    onboardingPromise,
   ]);
-
-  const purchase = user ? await getActivePurchase(supabase, user.id).catch(() => null) : null;
   const subscribed = Boolean(purchase);
 
   let parentName = "";
   let profileKids: Array<{ id: string; name: string; birthYear: number; avatar: string; gender: string | null }> = [];
   if (user) {
-    const onboarding = await getFamilyOnboarding(supabase, user.id).catch(() => null);
     if (!onboarding?.completed) redirect("/onboarding");
     parentName = onboarding.parentName;
     profileKids = onboarding.kids.map(({ id, name, birthYear, avatar, gender }) => ({ id, name, birthYear, avatar, gender }));
