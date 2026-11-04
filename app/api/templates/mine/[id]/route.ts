@@ -86,8 +86,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!title || title.length > 120) return Response.json({ error: "Add a title under 120 characters." }, { status: 400 });
   if (description.length > 280) return Response.json({ error: "Keep the description under 280 characters." }, { status: 400 });
   if (!categoryIds.length || categoryIds.some((id) => !UUID_PATTERN.test(id))) return Response.json({ error: "Choose at least one category." }, { status: 400 });
-  if (!Number.isInteger(minimumAge) || !Number.isInteger(maximumAge) || minimumAge < 0 || maximumAge > 18 || minimumAge > maximumAge) {
-    return Response.json({ error: "Enter a valid age range from 0 to 18." }, { status: 400 });
+  if (!Number.isInteger(minimumAge) || !Number.isInteger(maximumAge) || minimumAge < 0 || maximumAge > 16 || minimumAge > maximumAge) {
+    return Response.json({ error: "Enter a valid age range from 0 to 16." }, { status: 400 });
   }
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) return Response.json({ error: "Enter a valid duration." }, { status: 400 });
   if (!DIFFICULTIES.has(difficulty)) return Response.json({ error: "Choose a difficulty." }, { status: 400 });

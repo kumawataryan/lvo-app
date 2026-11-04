@@ -1,6 +1,6 @@
 "use client";
 
-const AGE_RANGE_OPTIONS = Array.from({ length: 19 }, (_, age) => age);
+const AGE_RANGE_OPTIONS = Array.from({ length: 17 }, (_, age) => age);
 
 export function AgeRangeSelector({
   minimumAge,

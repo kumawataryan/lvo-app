@@ -79,8 +79,8 @@ function resolveRow(index: number, raw: CsvRecord, categories: Category[], fileM
 
   const minimumAge = Number(raw.minimumage);
   const maximumAge = Number(raw.maximumage);
-  if (!Number.isInteger(minimumAge) || !Number.isInteger(maximumAge) || minimumAge < 0 || maximumAge > 18 || minimumAge > maximumAge) {
-    errors.push("Minimum/maximum age must be whole numbers between 0 and 18 (min ≤ max).");
+  if (!Number.isInteger(minimumAge) || !Number.isInteger(maximumAge) || minimumAge < 0 || maximumAge > 16 || minimumAge > maximumAge) {
+    errors.push("Minimum/maximum age must be whole numbers between 0 and 16 (min ≤ max).");
   }
 
   const durationMinutes = Number(raw.durationminutes);
@@ -104,7 +104,7 @@ function resolveRow(index: number, raw: CsvRecord, categories: Category[], fileM
     if (!featuredImageFile) errors.push(`Featured image "${featuredImageName}" was not found in the selected folder.`);
   }
 
-  const galleryNames = splitList(raw.galleryimages ?? "").slice(0, 10);
+  const galleryNames = splitList(raw.galleryimages ?? "").slice(0, 20);
   const galleryFiles: File[] = [];
   for (const name of galleryNames) {
     const file = fileMap.get(basename(name).toLowerCase());

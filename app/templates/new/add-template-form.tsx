@@ -33,7 +33,7 @@ export type InitialTemplateData = {
   images: Array<{ path: string; url: string }>;
 };
 
-const MAX_IMAGES = 10;
+const MAX_IMAGES = 20;
 const PRINTABLE_EXTENSIONS = ["pdf", "zip", "jpg", "jpeg", "png", "webp"];
 const PRINTABLE_ACCEPT = "application/pdf,application/zip,application/x-zip-compressed,image/jpeg,image/png,image/webp";
 
@@ -103,7 +103,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
   const ageRangeValid = Number.isInteger(Number(minimumAge))
     && Number.isInteger(Number(maximumAge))
     && Number(minimumAge) >= 0
-    && Number(maximumAge) <= 18
+    && Number(maximumAge) <= 16
     && Number(minimumAge) <= Number(maximumAge);
   const rootCategories = categories.filter((category) => !category.parentId);
 
@@ -355,7 +355,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
               <AgeRangeSelector
                 minimumAge={Number(minimumAge)}
                 maximumAge={Number(maximumAge)}
-                onChange={(minimum, maximum) => { setMinimumAge(String(minimum ?? 0)); setMaximumAge(String(maximum ?? 18)); }}
+                onChange={(minimum, maximum) => { setMinimumAge(String(minimum ?? 0)); setMaximumAge(String(maximum ?? 16)); }}
               />
             </Field>
 
