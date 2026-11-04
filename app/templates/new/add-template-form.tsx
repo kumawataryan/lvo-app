@@ -214,7 +214,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
 
         const staleDropboxPaths = removedImagePaths.filter((path) => path.startsWith("/lvo-files/"));
         const staleSupabasePaths = removedImagePaths.filter((path) => !path.startsWith("/lvo-files/"));
-        await Promise.all([
+        void Promise.all([
           staleDropboxPaths.length
             ? fetch("/api/dropbox/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths: staleDropboxPaths }) }).catch(() => undefined)
             : null,

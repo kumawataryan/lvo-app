@@ -131,61 +131,68 @@ export async function POST(request: Request) {
   if (insertError) return Response.json({ error: insertError.message }, { status: 400 });
 
   try {
-    const { error: categoryLinksError } = await supabase.from("template_category_assignments").insert(
-      categoryIds.map((categoryId, index) => ({
-        template_id: templateId,
-        category_id: categoryId,
-        is_primary: index === 0,
-        sort_order: index * 10,
-      })),
-    );
-    if (categoryLinksError) throw categoryLinksError;
-
-    if (galleryPaths.length) {
-      const { error } = await supabase.from("template_gallery_images").insert(
-        galleryPaths.map((storagePath, index) => ({
+    await Promise.all([
+      (async () => {
+      const { error: categoryLinksError } = await supabase.from("template_category_assignments").insert(
+        categoryIds.map((categoryId, index) => ({
           template_id: templateId,
-          storage_path: storagePath,
-          alt_text: `${title} image ${index + 1}`,
-          sort_order: (index + 1) * 10,
+          category_id: categoryId,
+          is_primary: index === 0,
+          sort_order: index * 10,
         })),
       );
-      if (error) throw error;
-    }
-
-    if (supplies.length) {
-      const { data: existing, error: selectError } = await supabase.from("supplies").select("id, name").in("name", supplies);
-      if (selectError) throw selectError;
-      const existingNames = new Set((existing ?? []).map((item) => item.name));
-      const missing = supplies.filter((name) => !existingNames.has(name));
-      if (missing.length) {
-        const { error } = await supabase.from("supplies").insert(missing.map((name) => ({ name })));
-        if (error && error.code !== "23505") throw error;
-      }
-      const { data: allSupplies, error: suppliesError } = await supabase.from("supplies").select("id, name").in("name", supplies);
-      if (suppliesError) throw suppliesError;
-      const byName = new Map((allSupplies ?? []).map((item) => [item.name, item.id]));
-      const links = supplies.flatMap((name, index) => {
-        const supplyId = byName.get(name);
-        return supplyId ? [{ template_id: templateId, supply_id: supplyId, sort_order: (index + 1) * 10 }] : [];
-      });
-      if (links.length) {
-        const { error } = await supabase.from("template_supplies").insert(links);
+      if (categoryLinksError) throw categoryLinksError;
+      })(),
+      (async () => {
+      if (galleryPaths.length) {
+        const { error } = await supabase.from("template_gallery_images").insert(
+          galleryPaths.map((storagePath, index) => ({
+            template_id: templateId,
+            storage_path: storagePath,
+            alt_text: `${title} image ${index + 1}`,
+            sort_order: (index + 1) * 10,
+          })),
+        );
         if (error) throw error;
       }
-    }
-
-    if (tags.length) {
-      const tagRows = tags.map((name) => ({ name, slug: slugify(name) })).filter(({ slug }) => slug);
-      const { error: tagUpsertError } = await supabase.from("template_tags").upsert(tagRows, { onConflict: "slug", ignoreDuplicates: true });
-      if (tagUpsertError) throw tagUpsertError;
-      const { data: savedTags, error: tagsError } = await supabase.from("template_tags").select("id, slug").in("slug", tagRows.map(({ slug }) => slug));
-      if (tagsError) throw tagsError;
-      const { error: tagLinksError } = await supabase.from("template_tag_assignments").insert(
-        (savedTags ?? []).map((tag) => ({ template_id: templateId, tag_id: tag.id })),
-      );
-      if (tagLinksError) throw tagLinksError;
-    }
+      })(),
+      (async () => {
+      if (supplies.length) {
+        const { data: existing, error: selectError } = await supabase.from("supplies").select("id, name").in("name", supplies);
+        if (selectError) throw selectError;
+        const existingNames = new Set((existing ?? []).map((item) => item.name));
+        const missing = supplies.filter((name) => !existingNames.has(name));
+        if (missing.length) {
+          const { error } = await supabase.from("supplies").insert(missing.map((name) => ({ name })));
+          if (error && error.code !== "23505") throw error;
+        }
+        const { data: allSupplies, error: suppliesError } = await supabase.from("supplies").select("id, name").in("name", supplies);
+        if (suppliesError) throw suppliesError;
+        const byName = new Map((allSupplies ?? []).map((item) => [item.name, item.id]));
+        const links = supplies.flatMap((name, index) => {
+          const supplyId = byName.get(name);
+          return supplyId ? [{ template_id: templateId, supply_id: supplyId, sort_order: (index + 1) * 10 }] : [];
+        });
+        if (links.length) {
+          const { error } = await supabase.from("template_supplies").insert(links);
+          if (error) throw error;
+        }
+      }
+      })(),
+      (async () => {
+      if (tags.length) {
+        const tagRows = tags.map((name) => ({ name, slug: slugify(name) })).filter(({ slug }) => slug);
+        const { error: tagUpsertError } = await supabase.from("template_tags").upsert(tagRows, { onConflict: "slug", ignoreDuplicates: true });
+        if (tagUpsertError) throw tagUpsertError;
+        const { data: savedTags, error: tagsError } = await supabase.from("template_tags").select("id, slug").in("slug", tagRows.map(({ slug }) => slug));
+        if (tagsError) throw tagsError;
+        const { error: tagLinksError } = await supabase.from("template_tag_assignments").insert(
+          (savedTags ?? []).map((tag) => ({ template_id: templateId, tag_id: tag.id })),
+        );
+        if (tagLinksError) throw tagLinksError;
+      }
+      })(),
+    ]);
   } catch (error) {
     await supabase.from("templates").delete().eq("id", templateId);
     return Response.json({ error: error instanceof Error ? error.message : "Could not save template details." }, { status: 400 });
