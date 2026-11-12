@@ -106,7 +106,7 @@ export function SubscriptionScreen({ initialPlan, initialGateway = null }: { ini
 
     const razorpay = new window.Razorpay!({
       key: data.keyId,
-      name: "Craft Library",
+      name: "Lovely.diy",
       description: `${plan.name} plan`,
       theme: { color: "#000000" },
       ...(plan.billingType === "one_time"

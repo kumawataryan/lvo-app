@@ -33,7 +33,7 @@ export async function POST(request: Request) {
           return_url: `${origin}/subscription/paypal/return`,
           cancel_url: `${origin}/subscription?paypal=cancelled`,
           user_action: "PAY_NOW",
-          brand_name: "Craft Library",
+          brand_name: "Lovely.diy",
         },
       }),
     });

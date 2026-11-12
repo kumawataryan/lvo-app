@@ -40,7 +40,7 @@ export async function POST(request: Request) {
         price_data: {
           currency: "usd",
           unit_amount: amountInCents(body.planId),
-          product_data: { name: `Craft Library ${plan.name} plan` },
+          product_data: { name: `Lovely.diy ${plan.name} plan` },
           ...(plan.billingType === "subscription"
             ? { recurring: { interval: body.planId === "monthly" ? "month" : "year" } }
             : {}),
