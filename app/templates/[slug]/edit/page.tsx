@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 
-import { canUserAddTemplates } from "@/lib/auth/permissions";
+import { canManageTemplate, canUserAddTemplates } from "@/lib/auth/permissions";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { publicMediaUrl } from "@/lib/templates/repository";
@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 type EditTemplateRow = {
   id: string;
   title: string;
+  slug: string;
+  status: string;
   short_description: string | null;
   minimum_age: number | null;
   maximum_age: number | null;
@@ -41,7 +43,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     supabase
       .from("templates")
       .select(`
-        id, title, short_description, minimum_age, maximum_age, duration_minutes, difficulty,
+        id, title, slug, status, short_description, minimum_age, maximum_age, duration_minutes, difficulty,
         video_embed_url, printable_path, thumbnail_path, is_free, created_by,
         category_assignments:template_category_assignments(category_id, is_primary, sort_order),
         gallery_images:template_gallery_images(storage_path, sort_order),
@@ -55,7 +57,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
   ]);
 
   const template = templateRow as unknown as EditTemplateRow | null;
-  if (!template || template.created_by !== user.id) notFound();
+  if (!template || !canManageTemplate(user, template.created_by)) notFound();
 
   const galleryPaths = [...(template.gallery_images ?? [])]
     .sort((a, b) => a.sort_order - b.sort_order)
@@ -67,6 +69,8 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
   const initialData: InitialTemplateData = {
     id: template.id,
     title: template.title,
+    slug: template.slug,
+    status: template.status,
     description: template.short_description ?? "",
     categoryIds: [...(template.category_assignments ?? [])]
       .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order)

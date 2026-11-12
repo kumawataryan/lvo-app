@@ -25,10 +25,10 @@ function planDisplay(planId: PlanId, gateway: Gateway | null) {
   return { name: base.name, period: base.period, price: base.price, badge: base.badge };
 }
 
-export function SubscriptionScreen() {
+export function SubscriptionScreen({ initialPlan, initialGateway = null }: { initialPlan?: PlanId; initialGateway?: Gateway | null } = {}) {
   const router = useRouter();
-  const [selectedPlan, setSelectedPlan] = useState<PlanId>("monthly");
-  const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<PlanId>(initialPlan ?? "monthly");
+  const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(initialGateway);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -59,6 +59,12 @@ export function SubscriptionScreen() {
     return () => window.clearTimeout(timeout);
   }, []);
 
+  // Signed-out users log in first, then return here with the chosen plan and gateway preselected.
+  const goToLoginThenSubscribe = () => {
+    const back = `/subscription?plan=${selectedPlan}${selectedGateway ? `&gateway=${selectedGateway}` : ""}`;
+    router.push(`/login?next=${encodeURIComponent(back)}`);
+  };
+
   const startRazorpayCheckout = async () => {
     await loadRazorpayCheckout();
     const plan = PLAN_DETAILS[selectedPlan];
@@ -70,7 +76,7 @@ export function SubscriptionScreen() {
     });
 
     if (response.status === 401) {
-      router.push("/login");
+      goToLoginThenSubscribe();
       return;
     }
 
@@ -128,7 +134,7 @@ export function SubscriptionScreen() {
     });
 
     if (response.status === 401) {
-      router.push("/login");
+      goToLoginThenSubscribe();
       return;
     }
 
@@ -142,27 +148,6 @@ export function SubscriptionScreen() {
     window.location.href = data.approveUrl;
   };
 
-  const startStripeCheckout = async () => {
-    const response = await fetch("/api/payments/stripe/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planId: selectedPlan }),
-    });
-
-    if (response.status === 401) {
-      router.push("/login");
-      return;
-    }
-
-    const data = await response.json();
-    if (!response.ok || !data.checkoutUrl) {
-      setErrorMessage(data.error || "Unable to start checkout. Please try again.");
-      setIsProcessing(false);
-      return;
-    }
-    window.location.href = data.checkoutUrl;
-  };
-
   const startCheckout = async () => {
     if (!selectedGateway) return;
     setErrorMessage(null);
@@ -171,7 +156,6 @@ export function SubscriptionScreen() {
     try {
       if (selectedGateway === "razorpay") await startRazorpayCheckout();
       else if (selectedGateway === "paypal") await startPaypalCheckout();
-      else await startStripeCheckout();
     } catch {
       setErrorMessage("Unable to start checkout. Please try again.");
       setIsProcessing(false);
@@ -240,7 +224,7 @@ export function SubscriptionScreen() {
           </div>
 
           <p className="mb-2 mt-7 text-xs font-semibold text-black/45">Payment method</p>
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
             {GATEWAYS.map((gateway) => {
               const isSelected = gateway.id === selectedGateway;
               return (

@@ -1,4 +1,4 @@
-import { canUserAddTemplates } from "@/lib/auth/permissions";
+import { canUserAddTemplates, isTemplateAdmin } from "@/lib/auth/permissions";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { publicMediaUrl } from "@/lib/templates/repository";
 
@@ -12,15 +12,18 @@ export async function GET(request: Request) {
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 120);
   const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 50);
+  const statusParam = url.searchParams.get("status") ?? "all";
+  if (!["all", "draft", "published"].includes(statusParam)) return Response.json({ error: "Invalid status." }, { status: 400 });
 
   const supabase = createSupabaseServiceRoleClient();
   let query = supabase
     .from("templates")
     .select("id, title, status, thumbnail_path, updated_at", { count: "exact" })
-    .eq("created_by", user.id)
     .order("updated_at", { ascending: false })
     .range(offset, offset + limit - 1);
+  if (!isTemplateAdmin(user)) query = query.eq("created_by", user.id);
   if (search) query = query.ilike("title", `%${search}%`);
+  if (statusParam !== "all") query = query.eq("status", statusParam);
 
   const { data: rows, count, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });

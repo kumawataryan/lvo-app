@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { TagDetailScreen } from "./tag-detail-screen";
 import { getSessionUser } from "@/lib/auth/session";
@@ -14,12 +14,14 @@ export default async function TagPage({ params, searchParams }: { params: Promis
   const [{ slug }, query] = await Promise.all([params, searchParams]);
   const page = Math.max(Number.parseInt(query.page ?? "1", 10) || 1, 1);
   const tag = await getTemplateTagBySlug(slug).catch(() => null);
-  if (!tag) notFound();
+  // A deleted tag, or one whose templates are all drafted or deleted, has nothing to show, so go back home.
+  if (!tag) redirect("/");
 
   const [{ templates, total }, supabase] = await Promise.all([
     listPublishedTemplatesByTag(slug, { offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE }),
     createSupabaseAuthServerClient(),
   ]);
+  if (!total) redirect("/");
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
   if (page > totalPages) redirect(`/tags/${slug}?page=${totalPages}`);
   const user = await getSessionUser(supabase);

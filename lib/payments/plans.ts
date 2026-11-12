@@ -88,7 +88,6 @@ export type GatewayInfo = {
 export const GATEWAYS: GatewayInfo[] = [
   { id: "razorpay", label: "Razorpay", iconDomain: "razorpay.com" },
   { id: "paypal", label: "PayPal", iconDomain: "paypal.com" },
-  { id: "stripe", label: "Stripe", iconDomain: "stripe.com" },
 ];
 
 export function isGateway(value: unknown): value is Gateway {

@@ -19,47 +19,61 @@ const STATUS_LABEL: Record<OwnedTemplateSummary["status"], string> = {
 };
 
 const STATUS_TONE: Record<OwnedTemplateSummary["status"], string> = {
-  draft: "bg-black/[0.06] text-black/50",
+  draft: "bg-amber-100 text-amber-700",
   published: "bg-emerald-100 text-emerald-700",
   archived: "bg-red-100 text-red-700",
 };
 
-export function ManageTemplatesScreen({ initialTemplates, initialHasMore, pageSize }: { initialTemplates: OwnedTemplateSummary[]; initialHasMore: boolean; pageSize: number }) {
+type StatusFilter = "all" | "draft" | "published";
+
+const FILTER_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "draft", label: "Drafts" },
+  { value: "published", label: "Published" },
+];
+
+export function ManageTemplatesScreen({ initialTemplates, initialHasMore, pageSize, isAdmin = false }: { initialTemplates: OwnedTemplateSummary[]; initialHasMore: boolean; pageSize: number; isAdmin?: boolean }) {
   const router = useRouter();
   const [templates, setTemplates] = useState(initialTemplates);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const lastFetchedSearch = useRef(search);
+  const lastFetchedQuery = useRef(`|all`);
+  // Only the most recent request may update the list, so a slow earlier response can't overwrite a newer filter.
+  const requestIdRef = useRef(0);
 
-  const fetchPage = async (offset: number, searchTerm: string, replace: boolean) => {
+  const fetchPage = async (offset: number, searchTerm: string, statusFilter: StatusFilter, replace: boolean) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ offset: String(offset), limit: String(pageSize) });
+      const params = new URLSearchParams({ offset: String(offset), limit: String(pageSize), status: statusFilter });
       if (searchTerm) params.set("search", searchTerm);
       const response = await fetch(`/api/templates/mine?${params.toString()}`);
       const result = await response.json() as { templates?: OwnedTemplateSummary[]; hasMore?: boolean; error?: string };
       if (!response.ok) throw new Error(result.error || "Could not load templates.");
+      if (requestId !== requestIdRef.current) return;
       setTemplates((current) => (replace ? (result.templates ?? []) : [...current, ...(result.templates ?? [])]));
       setHasMore(Boolean(result.hasMore));
     } catch {
       // Best-effort: leave the list as-is if a page fails to load.
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (lastFetchedSearch.current === search) return;
+    const query = `${search}|${filter}`;
+    if (lastFetchedQuery.current === query) return;
     const timer = setTimeout(() => {
-      lastFetchedSearch.current = search;
-      void fetchPage(0, search, true);
+      lastFetchedQuery.current = query;
+      void fetchPage(0, search, filter, true);
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, filter]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -67,12 +81,12 @@ export function ManageTemplatesScreen({ initialTemplates, initialHasMore, pageSi
     const root = mainRef.current;
     if (!sentinel || !root) return;
     const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting && !loading) void fetchPage(templates.length, search, false);
+      if (entries[0]?.isIntersecting && !loading) void fetchPage(templates.length, search, filter, false);
     }, { root, rootMargin: "200px" });
     observer.observe(sentinel);
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMore, loading, templates.length, search]);
+  }, [hasMore, loading, templates.length, search, filter]);
 
   return (
     <main ref={mainRef} className="fixed inset-0 w-screen max-w-none overflow-y-auto bg-[#f4f3f0] text-black">
@@ -93,6 +107,21 @@ export function ManageTemplatesScreen({ initialTemplates, initialHasMore, pageSi
               aria-label="Search your templates"
               className="h-12 w-full rounded-xl bg-[#f2f2f2] pl-11 pr-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2"
             />
+          </div>
+
+          {isAdmin ? <p className="mt-3 text-xs text-black/40">Admin view: showing templates from all users.</p> : null}
+          <div role="group" aria-label="Filter by status" className="mt-3 inline-flex gap-1 rounded-xl bg-[#f2f2f2] p-1">
+            {FILTER_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={filter === option.value}
+                onClick={() => setFilter(option.value)}
+                className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${filter === option.value ? "bg-white shadow-sm" : "text-black/50"}`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
 
           {templates.length ? (
@@ -123,7 +152,7 @@ export function ManageTemplatesScreen({ initialTemplates, initialHasMore, pageSi
             </div>
           ) : !loading ? (
             <div className="mt-5 rounded-2xl bg-[#f2f2f2] px-5 py-10 text-center text-sm text-black/45">
-              {search ? "No templates match your search." : "You haven't added any templates yet."}
+              {search ? "No templates match your search." : filter === "draft" ? "No drafts. Drafts are saved here and stay hidden from the site." : filter === "published" ? "No published templates yet." : isAdmin ? "No templates yet." : "You haven't added any templates yet."}
             </div>
           ) : null}
 

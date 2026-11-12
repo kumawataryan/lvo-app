@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl, videoEmbedPreviewSrc } from "@/lib/templates/video-embed";
 import { optimizeImageToWebp } from "@/lib/templates/image-optimize";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { slugify } from "@/lib/templates/slug";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { TemplateTopBar, tabRoute } from "@/components/craft-app";
@@ -19,6 +20,8 @@ type UploadRecord = { path: string };
 export type InitialTemplateData = {
   id: string;
   title: string;
+  slug: string;
+  status: string;
   description: string;
   categoryIds: string[];
   minimumAge: number;
@@ -68,6 +71,9 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
   const editing = Boolean(initialData);
   const [mode, setMode] = useState<"single" | "import">("single");
   const [title, setTitle] = useState(initialData?.title ?? "");
+  // New templates follow the title until the author edits the slug by hand; existing slugs are kept as-is.
+  const [slug, setSlug] = useState(initialData?.slug ?? "");
+  const [slugTouched, setSlugTouched] = useState(Boolean(initialData));
   const [description, setDescription] = useState(initialData?.description ?? "");
   const [categoryIds, setCategoryIds] = useState<string[]>(initialData?.categoryIds ?? []);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
@@ -140,6 +146,9 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid) return;
+    // Whichever button was pressed decides the status: "Save as draft" (value="draft") or publish.
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const asDraft = submitter?.value === "draft";
 
     setSubmitting(true);
     setError("");
@@ -196,12 +205,14 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
       ]);
       const [thumbnailPath = "", ...galleryPaths] = mediaPaths;
 
-      setStatus(editing ? "Saving…" : "Publishing template…");
+      setStatus(asDraft ? "Saving draft…" : editing ? "Saving…" : "Publishing template…");
       const response = await fetch(editing ? `/api/templates/mine/${initialData!.id}` : "/api/templates/create", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
+          slug: slug.trim(),
+          status: asDraft ? "draft" : "published",
           description: description.trim(),
           categoryIds,
           minimumAge: Number(minimumAge),
@@ -217,7 +228,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
           tags: [...tags, ...tagInput.split(",").map((item) => item.trim()).filter(Boolean)],
         }),
       });
-      const result = await response.json() as { id?: string; error?: string };
+      const result = await response.json() as { id?: string; slug?: string; error?: string };
       if (!response.ok || !result.id) throw new Error(result.error || (editing ? "Could not save changes." : "Could not publish this template."));
 
       if (editing && initialData) {
@@ -237,9 +248,10 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
         ]);
       }
 
-      setStatus(editing ? "Saved" : "Published");
+      setStatus(asDraft ? "Draft saved" : editing ? "Saved" : "Published");
       // replace() already renders the destination fresh; a separate refresh() would re-render everything a second time.
-      router.replace(editing ? "/templates/manage" : `/t/${result.id}`);
+      // Drafts are hidden from the site, so they go back to the manage list instead of their public page.
+      router.replace(asDraft || editing ? "/templates/manage" : `/t/${result.slug ?? result.id}`);
     } catch (caughtError) {
       if (uploadedToDropbox.length) {
         await fetch("/api/dropbox/delete", {
@@ -335,7 +347,25 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
           </Field>
 
           <Field label="Title">
-            <input required maxLength={120} autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Paper flower bouquet" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+            <input required maxLength={120} autoFocus value={title} onChange={(event) => { setTitle(event.target.value); if (!slugTouched) setSlug(slugify(event.target.value)); }} placeholder="Paper flower bouquet" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+          </Field>
+
+          <Field label="Slug" optional>
+            <input
+              value={slug}
+              maxLength={90}
+              onChange={(event) => { setSlug(event.target.value); setSlugTouched(true); setError(""); }}
+              onBlur={() => setSlug((current) => slugify(current))}
+              placeholder="paper-flower-bouquet"
+              aria-describedby="slug-hint"
+              className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 font-mono text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2"
+            />
+            <div id="slug-hint" className="mt-1.5 flex items-center justify-between gap-3 text-xs text-black/35">
+              <span>Lowercase letters, numbers and hyphens. Used for the template&apos;s download link.</span>
+              {slugTouched && slug !== slugify(title) ? (
+                <button type="button" onClick={() => { setSlug(slugify(title)); setSlugTouched(false); }} className="shrink-0 font-semibold text-black/55 underline-offset-2 hover:underline">Reset</button>
+              ) : null}
+            </div>
           </Field>
 
           <Field label="Short description" optional>
@@ -463,9 +493,15 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
 
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-        <button type="submit" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="mt-7 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
-          {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : editing ? <><Check className="h-4 w-4" />Save changes</> : <><Plus className="h-4 w-4" />Publish template</>}
-        </button>
+        <p className="mt-7 text-xs text-black/40">Drafts are saved to your manage list and stay hidden from the site until you publish them.</p>
+        <div className="mt-3 flex gap-3">
+          <button type="submit" value="draft" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="flex h-13 flex-1 items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black transition active:scale-[0.99] disabled:text-black/30">
+            Save as draft
+          </button>
+          <button type="submit" value="published" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="flex h-13 flex-[1.4] items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
+            {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : editing && initialData?.status !== "draft" ? <><Check className="h-4 w-4" />Save changes</> : <><Plus className="h-4 w-4" />Publish template</>}
+          </button>
+        </div>
         </form>
         )}
       </div>

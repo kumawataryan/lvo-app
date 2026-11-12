@@ -10,6 +10,12 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type LoginMode = "signin" | "signup";
 
+// Where to go after signing in: the `next` query param when it is a local path, otherwise home.
+function getNextPath() {
+  const value = new URLSearchParams(window.location.search).get("next");
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/";
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<LoginMode>("signin");
@@ -27,6 +33,7 @@ export default function LoginPage() {
     setLoading(true);
     setMessage(null);
     const supabase = createSupabaseBrowserClient();
+    const next = getNextPath();
 
     if (mode === "signin") {
       const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
@@ -35,7 +42,7 @@ export default function LoginPage() {
         setMessage(error.message);
         return;
       }
-      router.replace("/");
+      router.replace(next);
       router.refresh();
       return;
     }
@@ -43,7 +50,7 @@ export default function LoginPage() {
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
     });
     setLoading(false);
     if (error) {
@@ -51,7 +58,7 @@ export default function LoginPage() {
       return;
     }
     if (data.session) {
-      router.replace("/");
+      router.replace(next);
       router.refresh();
       return;
     }
@@ -66,7 +73,7 @@ export default function LoginPage() {
     const supabase = createSupabaseBrowserClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/` },
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(getNextPath())}` },
     });
     if (error) {
       setLoading(false);

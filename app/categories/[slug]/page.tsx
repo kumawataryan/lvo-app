@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { CategoryDetailScreen } from "@/components/craft-app";
 import { getSessionUser } from "@/lib/auth/session";
@@ -24,8 +24,12 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
     .then((user) => (user ? getActivePurchase(supabase, user.id).catch(() => null) : null));
   const [data, purchase] = await Promise.all([pagePromise, purchasePromise]);
 
-  const category = data?.category ?? fallbackCategory;
-  if (!category) notFound();
+  const category = data?.category;
+  if (!category) {
+    // A catalog category that is now inactive or deleted goes back home; unknown slugs stay 404.
+    if (fallbackCategory) redirect("/");
+    notFound();
+  }
 
   return <CategoryDetailScreen
     category={category}

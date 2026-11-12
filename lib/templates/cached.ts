@@ -2,7 +2,7 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
-import { getPublishedTemplateById, getTemplateCategoryBySlug, getTemplateCategoryTrail, listPublishedTemplates, listRootTemplateCategories, listTemplateSubcategories } from "./repository";
+import { getPublishedTemplateById, getPublishedTemplateBySlug, getTemplateCategoryBySlug, getTemplateCategoryTrail, listPublishedTemplates, listRootTemplateCategories, listTemplateSubcategories } from "./repository";
 import { DEFAULT_TEMPLATE_CATEGORIES } from "./types";
 
 // Public (non-user-specific) template data, shared across requests. Invalidated by revalidateTag("templates", "max") on writes.
@@ -48,8 +48,8 @@ export const getCachedCategoryPage = unstable_cache(
 const RELATED_TEMPLATE_LIMIT = 49;
 
 export const getCachedTemplateContent = unstable_cache(
-  async (id: string) => {
-    const template = await getPublishedTemplateById(id).catch(() => null);
+  async (slug: string) => {
+    const template = await getPublishedTemplateBySlug(slug).catch(() => null);
     if (!template) return null;
     const [relatedResult, categoryTrail] = await Promise.all([
       listPublishedTemplates({ category: template.category.slug, limit: RELATED_TEMPLATE_LIMIT }).catch(() => []),
@@ -58,5 +58,15 @@ export const getCachedTemplateContent = unstable_cache(
     return { template, related: relatedResult.filter((item) => item.id !== template.id), categoryTrail };
   },
   ["template-content"],
+  { revalidate: 60, tags: ["templates"] },
+);
+
+// Resolves an old id-based link to the template's current slug (null if it is no longer published).
+export const getCachedTemplateSlugById = unstable_cache(
+  async (id: string) => {
+    const template = await getPublishedTemplateById(id).catch(() => null);
+    return template?.slug ?? null;
+  },
+  ["template-slug-by-id"],
   { revalidate: 60, tags: ["templates"] },
 );

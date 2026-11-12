@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, forwardRef, Fragment, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, forwardRef, Fragment, startTransition, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -477,14 +477,19 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
   }, [initialTemplates.length]);
 
   const openTemplate = (template: Template) => {
-    router.push(`/t/${template.id}`);
+    router.push(`/t/${template.slug}`);
   };
 
-  const activeTab: Tab = pathname === "/browse" ? "browse" : pathname === "/search" ? "search" : pathname === "/profile" ? "profile" : "templates";
+  const routeTab: Tab = pathname === "/browse" ? "browse" : pathname === "/search" ? "search" : pathname === "/profile" ? "profile" : "templates";
+  // Highlight the tapped tab immediately; it reverts to the route's tab once navigation settles.
+  const [activeTab, setOptimisticTab] = useOptimistic<Tab>(routeTab);
 
   const goToTab = (nextTab: Tab) => {
     const targetUrl = tabRoute(nextTab);
-    const navigate = () => router.push(targetUrl);
+    const navigate = () => startTransition(() => {
+      setOptimisticTab(nextTab);
+      router.push(targetUrl);
+    });
     if (player.story) {
       player.setPlaying(false);
       if (!player.minimized) {
@@ -1028,7 +1033,7 @@ export function CategoryDetailScreen({ category, subcategories, initialTemplates
                 ))}
               </div>
             ) : null}
-            <TemplateFeed templates={visibleTemplates} onOpenDetail={(template) => router.push(`/t/${template.id}`)} subscribed={subscribed} interactions={interactions} horizontalPadding="px-3 md:px-4 lg:px-5" />
+            <TemplateFeed templates={visibleTemplates} onOpenDetail={(template) => router.push(`/t/${template.slug}`)} subscribed={subscribed} interactions={interactions} horizontalPadding="px-3 md:px-4 lg:px-5" />
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
@@ -1456,7 +1461,7 @@ export function TemplateCard({
       <ReelMedia template={template} eager={eager} hovered={hovered} />
       {onOpenDetail ? (
         <Link
-          href={`/t/${template.id}`}
+          href={`/t/${template.slug}`}
           aria-label={`View ${template.name}`}
           className="absolute inset-0 z-[1] rounded-[22px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
           onClick={(event) => event.stopPropagation()}
@@ -2027,7 +2032,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
       key: item?.id ?? `placeholder-${index}`,
       span: 1,
       render: item ? (
-        <TemplateCard template={item} onOpenDetail={() => router.push(`/t/${item.id}`)} interactions={interactions} subscribed={subscribed} />
+        <TemplateCard template={item} onOpenDetail={() => router.push(`/t/${item.slug}`)} interactions={interactions} subscribed={subscribed} />
       ) : (
         <DiscoveryPlaceholderCard variant={index} />
       ),
@@ -2111,7 +2116,7 @@ function DetailDescription({ description, tags, overlay = false }: { description
       ) : null}
       {tags.length ? (
         <div className={`flex flex-wrap gap-2 ${tokens.length ? "mt-2 min-[900px]:mt-4" : ""}`}>
-          {(tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT)).map((tag) => <Link key={tag} href={tagHref(tag)} className="rounded-lg bg-white min-[900px]:bg-[#f2f2f2] px-2.5 py-1 text-xs font-medium text-black/70 transition hover:bg-[#e9e9e9]">#{tag.replace(/\s+/g, "")}</Link>)}
+          {(tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT)).map((tag) => <Link key={tag} href={tagHref(tag)} className="rounded-lg bg-white min-[900px]:bg-[#f2f2f2] px-2.5 py-1 text-xs font-medium text-black/70 transition hover:bg-[#e9e9e9]">{tag}</Link>)}
           {tags.length > COLLAPSED_TAG_COUNT ? (
             <button type="button" onClick={() => setTagsExpanded((current) => !current)} className="rounded-lg bg-white min-[900px]:bg-[#f2f2f2] min-[900px]:border min-[900px]:border-black/10 px-2.5 py-1 text-xs font-semibold text-black transition hover:bg-[#f2f2f2]">
               {tagsExpanded ? "Show less" : `+${tags.length - COLLAPSED_TAG_COUNT} more`}
@@ -2124,7 +2129,7 @@ function DetailDescription({ description, tags, overlay = false }: { description
 }
 
 function ShareOptionsGrid({ template, onClose }: { template: Template; onClose: () => void }) {
-  const url = typeof window === "undefined" ? `/t/${template.id}` : window.location.href;
+  const url = typeof window === "undefined" ? `/t/${template.slug}` : window.location.href;
   const title = `Make ${template.name} with Lovely Vibes Only.`;
 
   const shareToInstagram = async () => {
@@ -2608,6 +2613,17 @@ function DetailVideoPlayer({ template, active, mobileOverlay }: { template: Temp
   const frameRatio = aspectRatio ?? (embed ? youtube.aspectRatio ?? embedFallbackRatio(embed) : null);
   const currentTime = embed ? youtubeCurrentTime : videoCurrentTime;
 
+  // Browsers block unmuted autoplay until the user interacts with the page. When that
+  // happens, fall back to muted playback and show the muted state so the viewer can tap to unmute.
+  const playVideo = useCallback((video: HTMLVideoElement) => {
+    video.play().catch((error: unknown) => {
+      if ((error as { name?: string }).name !== "NotAllowedError" || video.muted) return;
+      video.muted = true;
+      setMuted(true);
+      video.play().catch(() => undefined);
+    });
+  }, []);
+
   useEffect(() => {
     if (embed) return;
     const video = videoRef.current;
@@ -2618,8 +2634,8 @@ function DetailVideoPlayer({ template, active, mobileOverlay }: { template: Temp
       return;
     }
 
-    video.play().catch(() => undefined);
-  }, [active, muted, embed]);
+    playVideo(video);
+  }, [active, muted, embed, playVideo]);
 
   const { ready: youtubeReady, play: youtubePlay, pause: youtubePause, getCurrentTime: youtubeGetCurrentTime } = youtube;
 
@@ -2704,8 +2720,8 @@ function DetailVideoPlayer({ template, active, mobileOverlay }: { template: Temp
           disablePictureInPicture
           onPlay={() => setVideoPlaying(true)}
           onPause={() => setVideoPlaying(false)}
-          onCanPlay={(event) => { if (active) event.currentTarget.play().catch(() => undefined); }}
-          onLoadedData={(event) => { if (active) event.currentTarget.play().catch(() => undefined); }}
+          onCanPlay={(event) => { if (active) playVideo(event.currentTarget); }}
+          onLoadedData={(event) => { if (active) playVideo(event.currentTarget); }}
           onLoadedMetadata={(event) => {
             const video = event.currentTarget;
             setVideoDuration(video.duration || 0);

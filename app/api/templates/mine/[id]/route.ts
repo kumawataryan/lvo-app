@@ -1,11 +1,14 @@
 import { revalidateTag } from "next/cache";
-import { canUserAddTemplates } from "@/lib/auth/permissions";
+import { canManageTemplate, canUserAddTemplates } from "@/lib/auth/permissions";
 import { deleteDropboxFile } from "@/lib/dropbox/server";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { slugify } from "@/lib/templates/slug";
 
 type UpdateTemplateBody = {
   title?: unknown;
+  slug?: unknown;
+  status?: unknown;
   description?: unknown;
   categoryIds?: unknown;
   minimumAge?: unknown;
@@ -24,16 +27,6 @@ type UpdateTemplateBody = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DIFFICULTIES = new Set(["easy", "medium", "advanced"]);
 
-function slugify(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 90);
-}
-
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: templateId } = await params;
   if (!UUID_PATTERN.test(templateId)) return Response.json({ error: "Invalid template." }, { status: 400 });
@@ -47,11 +40,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { data: existing, error: existingError } = await supabase
     .from("templates")
-    .select("id, created_by")
+    .select("id, created_by, slug, status, published_at")
     .eq("id", templateId)
     .maybeSingle();
   if (existingError) return Response.json({ error: existingError.message }, { status: 500 });
-  if (!existing || existing.created_by !== user.id) return Response.json({ error: "Template not found." }, { status: 404 });
+  if (!existing || !canManageTemplate(user, existing.created_by)) return Response.json({ error: "Template not found." }, { status: 404 });
 
   let body: UpdateTemplateBody;
   try {
@@ -61,6 +54,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
+  // Omitted slug/status keep their current values; a provided slug is normalised and must not be empty.
+  const requestedSlug = typeof body.slug === "string" ? slugify(body.slug.trim()) : "";
+  const nextSlug = requestedSlug || existing.slug;
+  const nextStatus = body.status === "draft" || body.status === "published" ? body.status : existing.status;
   const description = typeof body.description === "string" ? body.description.trim() : "";
   const categoryIds = Array.isArray(body.categoryIds)
     ? [...new Set(body.categoryIds.filter((id): id is string => typeof id === "string"))].slice(0, 20)
@@ -85,6 +82,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const isOwnedMediaPath = (path: string) => path.startsWith(dropboxOwnedPrefix) || path.startsWith(mediaOwnedPrefix);
 
   if (!title || title.length > 120) return Response.json({ error: "Add a title under 120 characters." }, { status: 400 });
+  if (typeof body.slug === "string" && body.slug.trim() && !requestedSlug) return Response.json({ error: "Enter a slug with letters or numbers." }, { status: 400 });
   if (description.length > 280) return Response.json({ error: "Keep the description under 280 characters." }, { status: 400 });
   if (!categoryIds.length || categoryIds.some((id) => !UUID_PATTERN.test(id))) return Response.json({ error: "Choose at least one category." }, { status: 400 });
   if (!Number.isInteger(minimumAge) || !Number.isInteger(maximumAge) || minimumAge < 0 || maximumAge > 16 || minimumAge > maximumAge) {
@@ -109,6 +107,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { error: updateError } = await supabase.from("templates").update({
     title,
+    slug: nextSlug,
+    status: nextStatus,
+    // Keep the first publish time so re-publishing or drafting doesn't reshuffle the template's date.
+    published_at: nextStatus === "published" ? (existing.published_at ?? new Date().toISOString()) : existing.published_at,
     short_description: description,
     duration_minutes: durationMinutes,
     difficulty,
@@ -119,6 +121,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     is_free: isFree,
     thumbnail_path: thumbnailPath || galleryPaths[0] || null,
   }).eq("id", templateId);
+  if (updateError?.code === "23505") return Response.json({ error: "That slug is already used by another template." }, { status: 409 });
   if (updateError) return Response.json({ error: updateError.message }, { status: 400 });
 
   try {
@@ -217,7 +220,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     .eq("id", templateId)
     .maybeSingle();
   if (existingError) return Response.json({ error: existingError.message }, { status: 500 });
-  if (!existing || existing.created_by !== user.id) return Response.json({ error: "Template not found." }, { status: 404 });
+  if (!existing || !canManageTemplate(user, existing.created_by)) return Response.json({ error: "Template not found." }, { status: 404 });
 
   const { error: deleteError } = await supabase.from("templates").delete().eq("id", templateId);
   if (deleteError) return Response.json({ error: deleteError.message }, { status: 400 });

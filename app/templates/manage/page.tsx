@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { canUserAddTemplates } from "@/lib/auth/permissions";
+import { canUserAddTemplates, isTemplateAdmin } from "@/lib/auth/permissions";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { publicMediaUrl } from "@/lib/templates/repository";
 import { ManageTemplatesScreen } from "./manage-templates-screen";
@@ -16,12 +16,14 @@ export default async function ManageTemplatesPage() {
   if (!canUserAddTemplates(user)) redirect("/");
 
   const supabase = createSupabaseServiceRoleClient();
-  const { data: rows, count } = await supabase
+  const admin = isTemplateAdmin(user);
+  let query = supabase
     .from("templates")
     .select("id, title, status, thumbnail_path, updated_at", { count: "exact" })
-    .eq("created_by", user.id)
     .order("updated_at", { ascending: false })
     .range(0, PAGE_SIZE - 1);
+  if (!admin) query = query.eq("created_by", user.id);
+  const { data: rows, count } = await query;
 
   const templates = (rows ?? []).map((row) => ({
     id: row.id,
@@ -31,5 +33,5 @@ export default async function ManageTemplatesPage() {
     updatedAt: row.updated_at as string,
   }));
 
-  return <ManageTemplatesScreen initialTemplates={templates} initialHasMore={templates.length < (count ?? 0)} pageSize={PAGE_SIZE} />;
+  return <ManageTemplatesScreen initialTemplates={templates} initialHasMore={templates.length < (count ?? 0)} pageSize={PAGE_SIZE} isAdmin={admin} />;
 }

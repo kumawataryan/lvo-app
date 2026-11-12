@@ -2,9 +2,11 @@ import { revalidateTag } from "next/cache";
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
+import { slugify } from "@/lib/templates/slug";
 
 type CreateTemplateBody = {
   title?: unknown;
+  slug?: unknown;
   description?: unknown;
   categoryIds?: unknown;
   minimumAge?: unknown;
@@ -25,16 +27,6 @@ type CreateTemplateBody = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DIFFICULTIES = new Set(["easy", "medium", "advanced"]);
 
-function slugify(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 90);
-}
-
 export async function POST(request: Request) {
   const supabase = await createSupabaseAuthServerClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -49,6 +41,7 @@ export async function POST(request: Request) {
   }
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
+  const requestedSlug = typeof body.slug === "string" ? slugify(body.slug.trim()) : "";
   const description = typeof body.description === "string" ? body.description.trim() : "";
   const categoryIds = Array.isArray(body.categoryIds)
     ? [...new Set(body.categoryIds.filter((id): id is string => typeof id === "string"))].slice(0, 20)
@@ -74,6 +67,7 @@ export async function POST(request: Request) {
   const mediaOwnedPrefix = `${user.id}/`;
 
   if (!title || title.length > 120) return Response.json({ error: "Add a title under 120 characters." }, { status: 400 });
+  if (typeof body.slug === "string" && body.slug.trim() && !requestedSlug) return Response.json({ error: "Enter a slug with letters or numbers." }, { status: 400 });
   if (description.length > 280) return Response.json({ error: "Keep the description under 280 characters." }, { status: 400 });
   if (!categoryIds.length || categoryIds.some((id) => !UUID_PATTERN.test(id))) return Response.json({ error: "Choose at least one category." }, { status: 400 });
   if (!Number.isInteger(minimumAge) || !Number.isInteger(maximumAge) || minimumAge < 0 || maximumAge > 16 || minimumAge > maximumAge) {
@@ -99,7 +93,8 @@ export async function POST(request: Request) {
   }
 
   const templateId = crypto.randomUUID();
-  let slug = slugify(title) || `template-${templateId.slice(0, 8)}`;
+  // A slug the author typed is used exactly (and rejected if taken); otherwise one is derived from the title.
+  let slug = requestedSlug || slugify(title) || `template-${templateId.slice(0, 8)}`;
   const publishedAt = status === "published" ? new Date().toISOString() : null;
   let insertError: { code?: string; message: string } | null = null;
 
@@ -124,10 +119,11 @@ export async function POST(request: Request) {
     });
     insertError = result.error;
     if (!insertError) break;
-    if (insertError.code !== "23505") break;
+    if (insertError.code !== "23505" || requestedSlug) break;
     slug = `${slugify(title)}-${templateId.slice(0, 6)}`;
   }
 
+  if (insertError?.code === "23505") return Response.json({ error: "That slug is already used by another template." }, { status: 409 });
   if (insertError) return Response.json({ error: insertError.message }, { status: 400 });
 
   try {
