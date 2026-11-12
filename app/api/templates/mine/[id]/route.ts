@@ -4,6 +4,7 @@ import { deleteDropboxFile } from "@/lib/dropbox/server";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { slugify } from "@/lib/templates/slug";
+import { parseTemplateSpecs } from "@/lib/templates/specs";
 
 type UpdateTemplateBody = {
   title?: unknown;
@@ -21,6 +22,7 @@ type UpdateTemplateBody = {
   isFree?: unknown;
   galleryPaths?: unknown;
   supplies?: unknown;
+  specs?: unknown;
   tags?: unknown;
 };
 
@@ -74,6 +76,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const supplies = Array.isArray(body.supplies)
     ? [...new Set(body.supplies.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 20)
     : [];
+  const specs = parseTemplateSpecs(body.specs);
   const tags = Array.isArray(body.tags)
     ? [...new Set(body.tags.filter((item): item is string => typeof item === "string").map((item) => item.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
     : [];
@@ -177,6 +180,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           const { error } = await supabase.from("template_supplies").insert(links);
           if (error) throw error;
         }
+      }
+      })(),
+      (async () => {
+      const { error: deleteSpecsError } = await supabase.from("template_specs").delete().eq("template_id", templateId);
+      if (deleteSpecsError) throw deleteSpecsError;
+      if (specs.length) {
+        const { error } = await supabase.from("template_specs").insert(
+          specs.map((spec, index) => ({ template_id: templateId, label: spec.label, value: spec.value, sort_order: (index + 1) * 10 })),
+        );
+        if (error) throw error;
       }
       })(),
       (async () => {

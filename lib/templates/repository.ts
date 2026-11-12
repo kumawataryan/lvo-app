@@ -33,6 +33,7 @@ type TemplateRow = {
     sort_order: number;
     supply: { id: string; name: string; icon: string | null };
   }>;
+  template_specs?: Array<{ label: string; value: string; sort_order: number }>;
   tag_assignments?: Array<{ tag: { id: string; name: string; slug: string } }>;
 };
 
@@ -63,6 +64,7 @@ const templateFields = `${templateBaseFields}
 const templateRelations = `
   gallery_images:template_gallery_images(id, storage_path, alt_text, sort_order),
   template_supplies(quantity, notes, sort_order, supply:supplies(id, name, icon)),
+  template_specs(label, value, sort_order),
   tag_assignments:template_tag_assignments(tag:template_tags(id, name, slug))
 `;
 
@@ -131,6 +133,9 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     supplies: [...row.template_supplies]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((item) => ({ ...item.supply, quantity: item.quantity, notes: item.notes, sortOrder: item.sort_order })),
+    specs: [...(row.template_specs ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((spec) => ({ label: spec.label, value: spec.value, sortOrder: spec.sort_order })),
     tags: (row.tag_assignments ?? []).map(({ tag }) => tag.name).sort((a, b) => a.localeCompare(b)),
   };
 }

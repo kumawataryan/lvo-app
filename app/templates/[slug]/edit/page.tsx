@@ -26,6 +26,7 @@ type EditTemplateRow = {
   category_assignments: Array<{ category_id: string; is_primary: boolean; sort_order: number }>;
   gallery_images: Array<{ storage_path: string; sort_order: number }>;
   template_supplies: Array<{ sort_order: number; supply: { name: string } | null }>;
+  template_specs: Array<{ label: string; value: string; sort_order: number }>;
   tag_assignments: Array<{ tag: { name: string } | null }>;
 };
 
@@ -48,6 +49,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
         category_assignments:template_category_assignments(category_id, is_primary, sort_order),
         gallery_images:template_gallery_images(storage_path, sort_order),
         template_supplies(sort_order, supply:supplies(name)),
+        template_specs(label, value, sort_order),
         tag_assignments:template_tag_assignments(tag:template_tags(name))
       `)
       .eq("id", templateId)
@@ -84,6 +86,9 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     supplies: [...(template.template_supplies ?? [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .flatMap((item) => (item.supply ? [item.supply.name] : [])),
+    specs: [...(template.template_specs ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((spec) => ({ label: spec.label, value: spec.value })),
     tags: (template.tag_assignments ?? []).flatMap((assignment) => (assignment.tag ? [assignment.tag.name] : [])),
     printablePath: template.printable_path ?? "",
     images: orderedImagePaths.flatMap((path) => {

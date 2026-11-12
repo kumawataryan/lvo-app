@@ -31,6 +31,7 @@ export type InitialTemplateData = {
   videoUrl: string;
   isFree: boolean;
   supplies: string[];
+  specs: Array<{ label: string; value: string }>;
   tags: string[];
   printablePath: string;
   images: Array<{ path: string; url: string }>;
@@ -83,6 +84,9 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
   const [duration, setDuration] = useState(String(initialData?.durationMinutes ?? 15));
   const [difficulty, setDifficulty] = useState(initialData?.difficulty ?? "easy");
   const [supplies, setSupplies] = useState(initialData?.supplies.join(", ") ?? "");
+  const [specs, setSpecs] = useState<Array<{ id: string; label: string; value: string }>>(
+    () => initialData?.specs.map((spec) => ({ id: crypto.randomUUID(), label: spec.label, value: spec.value })) ?? [],
+  );
   const [tags, setTags] = useState<string[]>(initialData?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
   const [videoUrl, setVideoUrl] = useState(initialData?.videoUrl ?? "");
@@ -225,6 +229,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
           isFree,
           galleryPaths,
           supplies: supplies.split(",").map((item) => item.trim()).filter(Boolean),
+          specs: specs.map(({ label, value }) => ({ label: label.trim(), value: value.trim() })).filter((spec) => spec.label && spec.value),
           tags: [...tags, ...tagInput.split(",").map((item) => item.trim()).filter(Boolean)],
         }),
       });
@@ -430,6 +435,48 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
 
           <Field label="Supplies (comma separated)" optional>
             <input value={supplies} onChange={(event) => setSupplies(event.target.value)} placeholder="Paper, scissors, glue" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+          </Field>
+
+          <Field label="Details (label and value)" optional>
+            <div className="space-y-2">
+              {specs.map((spec) => (
+                <div key={spec.id} className="flex items-center gap-2">
+                  <input
+                    value={spec.label}
+                    onChange={(event) => setSpecs((current) => current.map((item) => (item.id === spec.id ? { ...item, label: event.target.value } : item)))}
+                    placeholder="Label, e.g. Resolution"
+                    maxLength={60}
+                    aria-label="Spec label"
+                    className="h-12 min-w-0 flex-1 rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2"
+                  />
+                  <input
+                    value={spec.value}
+                    onChange={(event) => setSpecs((current) => current.map((item) => (item.id === spec.id ? { ...item, value: event.target.value } : item)))}
+                    placeholder="Value, e.g. 300 DPI"
+                    maxLength={200}
+                    aria-label="Spec value"
+                    className="h-12 min-w-0 flex-1 rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove spec"
+                    onClick={() => setSpecs((current) => current.filter((item) => item.id !== spec.id))}
+                    className="flex h-12 w-10 shrink-0 items-center justify-center rounded-xl text-black/50 transition hover:bg-[#f2f2f2] hover:text-black"
+                  >
+                    <X aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              {specs.length < 12 ? (
+                <button
+                  type="button"
+                  onClick={() => setSpecs((current) => [...current, { id: crypto.randomUUID(), label: "", value: "" }])}
+                  className="h-10 rounded-xl border border-dashed border-black/20 px-4 text-sm font-medium text-black/70 transition hover:bg-[#f2f2f2]"
+                >
+                  Add detail
+                </button>
+              ) : null}
+            </div>
           </Field>
 
           <Field label="Tags" optional>

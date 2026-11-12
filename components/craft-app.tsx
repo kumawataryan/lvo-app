@@ -4,7 +4,7 @@ import { createContext, forwardRef, Fragment, startTransition, useCallback, useC
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download,  FastForward,  Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, LayoutGrid, LoaderCircle, Lock, LogOut, MoonStar, MoreHorizontal, Package, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote,   Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download,  FastForward,  Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, CircleHelp, LayoutGrid, LoaderCircle, Lock, LogOut, MoonStar, MoreHorizontal, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote,   Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, WandSparkles, X } from "lucide-react";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { toast } from "@/components/ui/toast";
@@ -247,6 +247,7 @@ export type Template = {
   galleryImages: string[];
   galleryAltText: string[];
   supplyItems: Array<{ name: string; icon: string | null }>;
+  specs: Array<{ label: string; value: string }>;
   tags: string[];
   hasPrintable: boolean;
   canPrint: boolean;
@@ -275,6 +276,7 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     galleryImages: template.galleryImages.map((image) => image.url),
     galleryAltText: template.galleryImages.map((image) => image.altText),
     supplyItems: template.supplies.map((supply) => ({ name: supply.name, icon: supply.icon })),
+    specs: template.specs.map((spec) => ({ label: spec.label, value: spec.value })),
     tags: template.tags ?? [],
     hasPrintable: template.hasPrintable,
     canPrint: template.hasPrintable && !template.printableIsZip,
@@ -1756,7 +1758,6 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   const [heartBurst, setHeartBurst] = useState(false);
   const [sharePopoverOpen, setSharePopoverOpen] = useState(false);
   const [savePopoverOpen, setSavePopoverOpen] = useState(false);
-  const [gatheredSupplies, setGatheredSupplies] = useState<Set<string>>(new Set());
   const [galleryTemplate, setGalleryTemplate] = useState<Template | null>(null);
   // Replays a one-shot icon animation: the nonce changes on every trigger so the icon remounts.
   const [iconAnimation, setIconAnimation] = useState<{ action: "like" | "share" | "save"; nonce: number } | null>(null);
@@ -1846,37 +1847,33 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   );
 
   const suppliesSection = template.supplyItems.length ? (
-    <section className="min-w-0 overflow-hidden rounded-2xl bg-white border border-black/10">
-                  <h2 className="flex items-center gap-2 border-b border-black/10 px-3 pb-1 pt-3 text-[13px] min-[900px]:px-4 min-[900px]:py-2.5 min-[900px]:text-[15px] font-semibold">
-                    <Package className="h-4 w-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />What you’ll need
-                  </h2>
-                  <table className="w-full table-fixed border-collapse text-sm min-[900px]:table-auto">
-                    <tbody className="divide-y divide-black/[0.08]">
-                      {template.supplyItems.map((supply, index) => {
-                        const ready = gatheredSupplies.has(supply.name);
-                        const toggle = () => setGatheredSupplies((current) => {
-                          const next = new Set(current);
-                          if (next.has(supply.name)) next.delete(supply.name);
-                          else next.add(supply.name);
-                          return next;
-                        });
-                        return (
-                          <tr key={supply.name} onClick={toggle} className="cursor-pointer transition hover:bg-[#f7f7f7] active:bg-[#f2f2f2]">
-                            <td className="w-9 py-1.5 text-center align-middle border-r border-black/[0.08]">
-                              <button type="button" role="checkbox" aria-checked={ready} aria-label={`${supply.name}, item ${index + 1}`} className="inline-flex h-5 w-5 touch-manipulation items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-brand">
-                                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums transition ${ready ? "bg-brand text-white" : "bg-[#f2f2f2] text-black/45"}`}>
-                                  {ready ? <Check className="h-3 w-3" strokeWidth={3} /> : index + 1}
-                                </span>
-                              </button>
-                            </td>
-                            <td className={`break-words px-3 py-1.5 text-xs leading-5 min-[900px]:px-3 min-[900px]:text-sm transition ${ready ? "text-black/35 line-through" : "text-black/80"}`}>{supply.name}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </section>
+    <p className="min-w-0 break-words text-xs leading-5 text-black/80 min-[900px]:text-sm">
+      <span className="font-semibold">Supplies:</span> {template.supplyItems.map((supply) => supply.name).join(", ")}
+    </p>
   ) : null;
+
+  const ageGroup = template.minimumAge != null && template.maximumAge != null
+    ? `${template.minimumAge}–${template.maximumAge} years`
+    : template.minimumAge != null
+      ? `${template.minimumAge}+ years`
+      : "All ages";
+  const specRows: Array<{ label: string; value: string }> = [
+    ...template.specs,
+    { label: "Age Group", value: ageGroup },
+  ];
+  const specsTable = (
+    <section className="min-w-0">
+      <h2 className="mb-2 text-xs font-semibold text-black">Details</h2>
+      <dl className="divide-y divide-black/[0.06] text-xs">
+        {specRows.map((row) => (
+          <div key={row.label} className="flex items-baseline justify-between gap-4 py-2">
+            <dt className="shrink-0 text-black/45">{row.label}</dt>
+            <dd className="text-right font-medium text-black/85 break-words">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
 
   const tiles: MasonryTile[] = [
     {
@@ -1980,7 +1977,9 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
                   </nav>
                 ) : null}
                 <h1 className="text-balance text-lg min-[900px]:text-[27px] font-semibold leading-tight tracking-tight">{template.name}</h1>
-                <DetailDescription description={template.description} tags={template.tags} />
+                <DetailDescription description={template.description} tags={[]} />
+                {suppliesSection ? <div className="mt-3">{suppliesSection}</div> : null}
+                <div className="mt-5"><DetailDescription description="" tags={template.tags} /></div>
               </div>
             {photos.length ? (
               <button
@@ -2005,10 +2004,24 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
                 {photos.length > 1 ? <span className="absolute bottom-0 right-0 flex h-[52px] w-[52px] items-center justify-center rounded-xl bg-black/35 text-sm font-semibold text-white">+{photos.length - 1}</span> : null}
               </button>
             ) : null}
-              {suppliesSection ? <div className="hidden min-[900px]:block">{suppliesSection}</div> : null}
+              <div className="mt-6 hidden min-[900px]:block">{specsTable}</div>
             </div>
 
             <div className="mt-auto hidden flex-col gap-2 min-[900px]:flex">
+              <div className="mb-3 flex flex-col gap-2 text-[11px] leading-4 text-black/50">
+                <Link href="/contact" className="group flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f2f2f2]">
+                    <WandSparkles className="h-3 w-3 text-black/55" strokeWidth={1.5} aria-hidden="true" />
+                  </span>
+                  <span className="text-black/65 group-hover:text-black">Need a custom template?</span>
+                </Link>
+                <Link href="/contact" className="group flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f2f2f2]">
+                    <CircleHelp className="h-3 w-3 text-black/55" strokeWidth={1.5} aria-hidden="true" />
+                  </span>
+                  <span className="text-black/65 group-hover:text-black">Need help?</span>
+                </Link>
+              </div>
               <div className="grid auto-cols-fr grid-flow-col gap-2">
                 <button type="button" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="group flex h-14 min-w-0 flex-row min-[900px]:h-24 min-[900px]:flex-col items-center justify-center gap-2 rounded-2xl bg-brand text-[13px] font-semibold text-white transition active:scale-95 hover:bg-brand/85 disabled:opacity-70">
                   {downloading ? <LoaderCircle className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8 animate-spin" strokeWidth={1.8} /> : downloadDone ? <Check className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8 animate-icon-pop" strokeWidth={2.5} /> : canDownload ? <Download className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8 animate-icon-bob" strokeWidth={1.8} /> : <Lock className="h-5 w-5 min-[900px]:h-8 min-[900px]:w-8" strokeWidth={1.8} />}
@@ -2025,6 +2038,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
           </div>
         </div>
         {suppliesSection ? <div className="mb-4 w-full min-[900px]:hidden">{suppliesSection}</div> : null}
+        <div className="mb-4 w-full min-[900px]:hidden">{specsTable}</div>
         </div>
       ),
     },

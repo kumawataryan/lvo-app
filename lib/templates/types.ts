@@ -38,6 +38,12 @@ export type TemplateSupply = {
   sortOrder: number;
 };
 
+export type TemplateSpec = {
+  label: string;
+  value: string;
+  sortOrder: number;
+};
+
 export type PublishedTemplate = {
   id: string;
   slug: string;
@@ -59,6 +65,7 @@ export type PublishedTemplate = {
   category: TemplateCategory;
   galleryImages: TemplateGalleryImage[];
   supplies: TemplateSupply[];
+  specs: TemplateSpec[];
   tags: string[];
 };
 
