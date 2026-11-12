@@ -2,6 +2,8 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
+import { getTemplateBadge } from "./downloads";
+import { rankSimilarTemplates } from "./similar";
 import { getPublishedTemplateById, getPublishedTemplateBySlug, getTemplateCategoryBySlug, getTemplateCategoryTrail, listPublishedTemplates, listRootTemplateCategories, listTemplateSubcategories } from "./repository";
 import { DEFAULT_TEMPLATE_CATEGORIES } from "./types";
 
@@ -51,11 +53,17 @@ export const getCachedTemplateContent = unstable_cache(
   async (slug: string) => {
     const template = await getPublishedTemplateBySlug(slug).catch(() => null);
     if (!template) return null;
-    const [relatedResult, categoryTrail] = await Promise.all([
+    const [relatedResult, categoryTrail, badge] = await Promise.all([
       listPublishedTemplates({ category: template.category.slug, limit: RELATED_TEMPLATE_LIMIT }).catch(() => []),
       getTemplateCategoryTrail(template.category.id).catch(() => null),
+      getTemplateBadge(template.id).catch(() => null),
     ]);
-    return { template, related: relatedResult.filter((item) => item.id !== template.id), categoryTrail };
+    // Author-picked similar templates come first (in the order chosen), then the automatic ranking for the rest.
+    const pickedIds = template.similarTemplateIds.filter((id) => id !== template.id);
+    const picked = (await Promise.all(pickedIds.map((id) => getPublishedTemplateById(id).catch(() => null)))).filter((item): item is NonNullable<typeof item> => item !== null);
+    const pickedSet = new Set(picked.map((item) => item.id));
+    const rest = rankSimilarTemplates(template, relatedResult.filter((item) => item.id !== template.id && !pickedSet.has(item.id)));
+    return { template: { ...template, badge }, related: [...picked, ...rest], categoryTrail };
   },
   ["template-content"],
   { revalidate: 60, tags: ["templates"] },

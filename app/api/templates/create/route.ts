@@ -5,6 +5,7 @@ import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embe
 import { slugify } from "@/lib/templates/slug";
 import { parseTemplateSpecs } from "@/lib/templates/specs";
 import { parseAffiliateProductIds } from "@/lib/templates/affiliate";
+import { parseSimilarTemplateIds } from "@/lib/templates/similar";
 
 type CreateTemplateBody = {
   title?: unknown;
@@ -24,6 +25,7 @@ type CreateTemplateBody = {
   supplies?: unknown;
   specs?: unknown;
   affiliateProductIds?: unknown;
+  similarTemplateIds?: unknown;
   tags?: unknown;
   status?: unknown;
 };
@@ -66,6 +68,7 @@ export async function POST(request: Request) {
     : [];
   const specs = parseTemplateSpecs(body.specs);
   const affiliateProductIds = parseAffiliateProductIds(body.affiliateProductIds);
+  const similarTemplateIds = parseSimilarTemplateIds(body.similarTemplateIds);
   const tags = Array.isArray(body.tags)
     ? [...new Set(body.tags.filter((item): item is string => typeof item === "string").map((item) => item.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
     : [];
@@ -179,6 +182,14 @@ export async function POST(request: Request) {
           const { error } = await supabase.from("template_supplies").insert(links);
           if (error) throw error;
         }
+      }
+      })(),
+      (async () => {
+      if (similarTemplateIds.length) {
+        const { error } = await supabase.from("template_similar").insert(
+          similarTemplateIds.map((similarId, index) => ({ template_id: templateId, similar_template_id: similarId, sort_order: (index + 1) * 10 })),
+        );
+        if (error) throw error;
       }
       })(),
       (async () => {

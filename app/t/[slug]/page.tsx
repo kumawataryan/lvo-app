@@ -30,8 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title,
     description,
-    // The root layout asks search engines not to index the site; template pages are the exception.
-    robots: { index: true, follow: true },
+    robots: { index: false, follow: false },
     alternates: url ? { canonical: url } : undefined,
     openGraph: {
       title,
@@ -70,5 +69,5 @@ export default async function TemplatePage({ params }: { params: Promise<{ slug:
   if (user && !onboarding?.completed) redirect("/onboarding");
   const { template, related, categoryTrail } = content;
 
-  return <TemplateDetailClient subscribed={subscribed} canAddTemplates={canUserAddTemplates(user)} initialTemplate={template} initialRelated={related} categoryTrail={categoryTrail} />;
+  return <TemplateDetailClient subscribed={subscribed} signedIn={Boolean(user)} canAddTemplates={canUserAddTemplates(user)} initialTemplate={template} initialRelated={related} categoryTrail={categoryTrail} />;
 }

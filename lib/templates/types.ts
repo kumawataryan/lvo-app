@@ -58,6 +58,8 @@ export type PublishedTemplate = {
   title: string;
   shortDescription: string;
   durationMinutes: number;
+  downloadCount: number;
+  badge?: string | null;
   minimumAge: number | null;
   maximumAge: number | null;
   difficulty: TemplateDifficulty;
@@ -75,6 +77,7 @@ export type PublishedTemplate = {
   supplies: TemplateSupply[];
   specs: TemplateSpec[];
   affiliateProducts: AffiliateProductLink[];
+  similarTemplateIds: string[];
   tags: string[];
 };
 

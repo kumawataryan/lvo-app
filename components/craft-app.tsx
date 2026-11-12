@@ -1,6 +1,8 @@
 "use client";
 
-import { createContext, forwardRef, Fragment, startTransition, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { InstallTile } from "@/components/install-prompt";
+import { PLAN_DETAILS, RAZORPAY_PLAN_DETAILS } from "@/lib/payments/plans";
+import { createContext, forwardRef, Fragment, type FormEvent, startTransition, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useOptimistic, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -17,7 +19,6 @@ import { DEFAULT_TEMPLATE_CATEGORIES, type AffiliateProductLink, type PublishedT
 import { embedFallbackRatio, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { useEmbedPlayer } from "@/lib/video/use-embed-player";
 import { useEmbedThumbnail } from "@/lib/video/use-embed-thumbnail";
-import { PLAN_DETAILS } from "@/lib/payments/plans";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useStoryPlayer } from "@/components/story-player";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
@@ -238,6 +239,8 @@ export type Template = {
   category: string;
   categorySlug?: string;
   time: string;
+  downloadCount: number;
+  badge: string | null;
   difficulty: "Easy" | "Medium" | "Advanced";
   supplies: string;
   description: string;
@@ -268,6 +271,8 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     category: template.category.name,
     categorySlug: template.category.slug,
     time: `${template.durationMinutes} min`,
+    downloadCount: template.downloadCount ?? 0,
+    badge: template.badge ?? null,
     difficulty,
     supplies: `${template.supplies.length} ${template.supplies.length === 1 ? "supply" : "supplies"}`,
     description: template.shortDescription,
@@ -432,6 +437,8 @@ type AppShellContextValue = {
   subscribed: boolean;
   canAddTemplates: boolean;
   isAdmin: boolean;
+  trialOffer: boolean;
+  currency: "INR" | "USD";
   parentName: string;
   subscription: SubscriptionSummary | null;
   profileKids: ProfileKidSummary[];
@@ -460,7 +467,7 @@ export function tabRoute(tab: Tab): string {
   return TAB_ROUTES[tab] ?? "/";
 }
 
-function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT_TEMPLATE_CATEGORIES, canAddTemplates = false, isAdmin = false, subscribed = false, parentName = "", subscription = null, profileKids = [] }: { children: ReactNode; initialTemplates?: PublishedTemplate[]; initialCategories?: TemplateCategory[]; canAddTemplates?: boolean; isAdmin?: boolean; subscribed?: boolean; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
+function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT_TEMPLATE_CATEGORIES, canAddTemplates = false, isAdmin = false, trialOffer = false, currency = "INR", subscribed = false, parentName = "", subscription = null, profileKids = [] }: { children: ReactNode; initialTemplates?: PublishedTemplate[]; initialCategories?: TemplateCategory[]; canAddTemplates?: boolean; isAdmin?: boolean; trialOffer?: boolean; currency?: "INR" | "USD"; subscribed?: boolean; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [templates, setTemplates] = useState<Template[]>(() => initialTemplates.map(mapPublishedTemplate));
@@ -509,7 +516,7 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
   };
 
   const contextValue: AppShellContextValue = {
-    templates, templatesError, categories, interactions, subscribed, canAddTemplates, isAdmin,
+    templates, templatesError, categories, interactions, subscribed, canAddTemplates, isAdmin, trialOffer, currency,
     parentName, subscription, profileKids, activeTab, goToTab, openTemplate,
   };
 
@@ -550,11 +557,17 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
 }
 
 export function TemplatesTabContent() {
-  const { templates, templatesError, subscribed, canAddTemplates, interactions, activeTab, goToTab, openTemplate } = useAppShell();
+  const { templates, templatesError, subscribed, canAddTemplates, trialOffer, currency, interactions, activeTab, goToTab, openTemplate } = useAppShell();
+  // Random position for the install tile, picked once in the browser so server and client markup match.
+  const [installIndex, setInstallIndex] = useState<number | null>(null);
+  useEffect(() => {
+    if (!templates.length) return;
+    setInstallIndex(Math.floor(Math.random() * Math.min(templates.length, 24)));
+  }, [templates.length]);
   return (
     <section className="m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
       <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} activeTab={activeTab} onTabChange={goToTab} />
-      {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : <TemplateFeed templates={templates} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />}
+      {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : <TemplateFeed templates={templates} leading={trialOffer ? <TrialOfferCard /> : null} inserts={[{ at: installIndex, node: <InstallTile /> }, { at: 10, node: <RequestTemplateCard /> }, ...(subscribed ? [] : [{ at: 4, node: <PlanCard currency={currency} /> }])]} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />}
     </section>
   );
 }
@@ -1340,8 +1353,45 @@ function SearchFiltersSheet({
   );
 }
 
+function TrialOfferCard() {
+  const router = useRouter();
+  const [claiming, setClaiming] = useState(false);
+  const [error, setError] = useState("");
+
+  const claim = async () => {
+    setClaiming(true);
+    setError("");
+    try {
+      const response = await fetch("/api/trial/claim", { method: "POST" });
+      const result = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not start your free month.");
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not start your free month.");
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  return (
+    <div className="rounded-[22px] bg-[#f2eee8] p-5">
+      <p className="text-base font-semibold leading-tight">Your first month is free</p>
+      <p className="mt-2 text-sm leading-5 text-black/65">You&apos;ve downloaded 50 free templates. Try everything for 30 days, no card needed.</p>
+      <ul className="mt-3 space-y-1.5 text-xs text-black/70">
+        <li>Unlimited downloads</li>
+        <li>Print-ready files</li>
+        <li>New templates each month</li>
+      </ul>
+      <button type="button" disabled={claiming} onClick={claim} className="mt-4 h-11 w-full rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60">{claiming ? "Starting…" : "Start free month"}</button>
+      {error ? <p role="alert" className="mt-2 text-xs text-red-600">{error}</p> : null}
+    </div>
+  );
+}
+
 function TemplateFeed(props: {
   dark?: boolean;
+  leading?: ReactNode;
+  inserts?: Array<{ at: number | null; node: ReactNode }>;
   templates: Template[];
   onOpenDetail: (template: Template) => void;
   subscribed: boolean;
@@ -1349,21 +1399,25 @@ function TemplateFeed(props: {
   topPadding?: string;
   horizontalPadding?: string;
 }) {
-  const { templates, dark = false, topPadding = "pt-3", horizontalPadding = "px-3 md:px-4 lg:px-5" } = props;
+  const { templates, leading = null, dark = false, topPadding = "pt-3", horizontalPadding = "px-3 md:px-4 lg:px-5" } = props;
 
   return (
     <div className={`relative m-0 h-full overscroll-y-contain ${horizontalPadding} pb-24 ${topPadding} overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${dark ? "bg-black" : "bg-white"}`}>
       <div className="columns-2 gap-5 sm:columns-3 md:gap-6 lg:columns-4 min-[1033px]:columns-5 xl:columns-6 2xl:columns-8">
+        {leading ? <div className="mb-5 break-inside-avoid md:mb-6">{leading}</div> : null}
         {templates.map((template, index) => (
-          <div key={template.id} className="mb-5 break-inside-avoid md:mb-6">
-            <TemplateCard
-              template={template}
-              eager={index < 2}
-              onOpenDetail={() => props.onOpenDetail(template)}
-              interactions={props.interactions}
-              subscribed={props.subscribed}
-            />
-          </div>
+          <Fragment key={template.id}>
+            {(props.inserts ?? []).filter((item) => item.at === index).map((item, slot) => <div key={slot} className="mb-5 break-inside-avoid md:mb-6">{item.node}</div>)}
+            <div className="mb-5 break-inside-avoid md:mb-6">
+              <TemplateCard
+                template={template}
+                eager={index < 2}
+                onOpenDetail={() => props.onOpenDetail(template)}
+                interactions={props.interactions}
+                subscribed={props.subscribed}
+              />
+            </div>
+          </Fragment>
         ))}
       </div>
       {templates.length === 0 ? <div className="flex min-h-48 items-center justify-center px-8 text-center text-sm text-black/45">No templates match your search.</div> : null}
@@ -1465,6 +1519,7 @@ export function TemplateCard({
       onPointerLeave={() => setHovered(false)}
     >
       <ReelMedia template={template} eager={eager} hovered={hovered} />
+      {template.badge ? <span className="pointer-events-none absolute left-2 top-2 z-10 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-black/75 shadow-sm">{template.badge}</span> : null}
       {onOpenDetail ? (
         <Link
           href={`/t/${template.slug}`}
@@ -1554,15 +1609,141 @@ export function TemplateCard({
   );
 }
 
-function SubscriptionSheet({ template, onClose }: { template: Template; onClose: () => void }) {
+function SignInSheet({ onClose }: { onClose: () => void }) {
   const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const nextPath = () => `${window.location.pathname}${window.location.search}`;
+
+  const continueWithGoogle = async () => {
+    setBusy(true);
+    setError("");
+    const supabase = createSupabaseBrowserClient();
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath())}` },
+    });
+    if (oauthError) {
+      setError("Google sign-in isn't available right now. Try email instead.");
+      setBusy(false);
+    }
+  };
+
   return (
     <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DrawerContent>
-        <DrawerTitle className="text-xl font-semibold tracking-tight">Unlock printable</DrawerTitle>
-        <DrawerDescription className="sr-only">Subscribe to download {template.name}.</DrawerDescription>
-        <p className="mt-1 text-sm font-medium text-black/45">$1.50 / month</p>
-        <button type="button" onClick={() => { onClose(); router.push(`/subscription?template=${template.slug}`); }} className="mt-5 h-12 w-full rounded-xl bg-black text-sm font-semibold text-white transition active:scale-[0.98]">Continue</button>
+        <DrawerTitle className="text-xl font-semibold tracking-tight">Sign in to download</DrawerTitle>
+        <DrawerDescription className="mt-1 text-sm text-black/55">It&apos;s free to join, and your downloads are saved to your account.</DrawerDescription>
+        <button type="button" onClick={continueWithGoogle} disabled={busy} className="mt-5 h-12 w-full rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60">{busy ? "Connecting…" : "Continue with Google"}</button>
+        <button type="button" onClick={() => { onClose(); router.push(`/login?next=${encodeURIComponent(nextPath())}`); }} className="mt-2 h-12 w-full rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black transition active:scale-[0.98]">Use email instead</button>
+        {error ? <p role="alert" className="mt-3 text-xs text-red-600">{error}</p> : null}
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function EmailGateSheet({ template, onClose, onSignIn }: { template: Template; onClose: () => void; onSignIn: () => void }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/leads/download", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, slug: template.slug }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { url?: string; filename?: string; error?: string };
+      if (!response.ok || !result.url) throw new Error(result.error || "Something went wrong. Please try again.");
+      const link = document.createElement("a");
+      link.href = result.url;
+      link.download = result.filename ?? "";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DrawerContent>
+        <DrawerTitle className="text-xl font-semibold tracking-tight">Enter your email to get this printable</DrawerTitle>
+        <DrawerDescription className="mt-1 text-sm text-black/55">{template.name}. We&apos;ll also send you free printables from time to time. Unsubscribe anytime.</DrawerDescription>
+        <form onSubmit={submit} className="mt-5 space-y-3">
+          <input type="email" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+          <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60">{busy ? "Preparing…" : "Get printable"}</button>
+        </form>
+        {error ? <p role="alert" className="mt-3 text-xs text-red-600">{error}</p> : null}
+        <button type="button" onClick={onSignIn} className="mt-4 w-full text-center text-xs text-black/50 underline">Already have an account? Sign in</button>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function PlanCard({ currency }: { currency: "INR" | "USD" }) {
+  const router = useRouter();
+  const prices = currency === "USD" ? PLAN_DETAILS : RAZORPAY_PLAN_DETAILS;
+  const monthly = prices.monthly;
+  const yearly = prices.yearly;
+  return (
+    <div className="rounded-[22px] bg-[#f2eee8] p-5">
+      <p className="text-base font-semibold leading-tight">Unlimited printables</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight">{monthly.price}<span className="text-sm font-normal text-black/55"> / month</span></p>
+      <p className="mt-1 text-xs text-black/55">or {yearly.price} a year{yearly.badge ? `, ${yearly.badge.toLowerCase()}` : ""}</p>
+      <ul className="mt-3 space-y-1.5 text-xs text-black/70">
+        <li>Unlimited downloads and printing</li>
+        <li>New templates added every week</li>
+        <li>Print-ready files for home and classroom</li>
+      </ul>
+      <button type="button" onClick={() => router.push("/subscription")} className="mt-4 h-11 w-full rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.98]">See plans</button>
+    </div>
+  );
+}
+
+function RequestTemplateCard() {
+  const router = useRouter();
+  return (
+    <div className="rounded-[22px] bg-[#f2eee8] p-5">
+      <p className="text-base font-semibold leading-tight">Can&apos;t find what you need?</p>
+      <p className="mt-2 text-xs leading-5 text-black/65">Tell us what your kids are working on, and we&apos;ll make a custom template for them.</p>
+      <button type="button" onClick={() => router.push("/contact")} className="mt-4 h-11 w-full rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.98]">Request a template</button>
+    </div>
+  );
+}
+
+function SubscriptionSheet({ template, onClose }: { template: Template; onClose: () => void }) {
+  const router = useRouter();
+  const benefits = [
+    "Unlimited downloads from every template",
+    "Print-ready files for home and classroom",
+    "New templates added every week for your kids",
+  ];
+  return (
+    <Drawer open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DrawerContent>
+        <div className="mx-auto w-full max-w-md px-5 pb-8 pt-2">
+          <DrawerTitle className="text-xl font-semibold tracking-tight">Unlock {template.name}</DrawerTitle>
+          <DrawerDescription className="mt-1 text-sm text-black/55">Subscribe to download and print this template, and everything else in the library.</DrawerDescription>
+          <ul className="mt-5 space-y-3 text-sm text-black/80">
+            {benefits.map((benefit) => (
+              <li key={benefit} className="flex items-start gap-3">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={2.5} aria-hidden="true" />
+                <span>{benefit}</span>
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => { onClose(); router.push(`/subscription?template=${template.slug}`); }} className="mt-6 h-12 w-full rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.98]">See plans</button>
+          <button type="button" onClick={onClose} className="mt-2 h-12 w-full rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black transition active:scale-[0.98]">Not now</button>
+          <p className="mt-3 text-center text-xs text-black/40">Cancel anytime.</p>
+        </div>
       </DrawerContent>
     </Drawer>
   );
@@ -1757,7 +1938,7 @@ function MasonryGrid({ tiles }: { tiles: MasonryTile[] }) {
   );
 }
 
-export function TemplateDetail({ template, related, onBack, subscribed = false, canAddTemplates = false, interactions, categoryTrail = null }: { template: Template; related: Template[]; onBack: () => void; subscribed?: boolean; canAddTemplates?: boolean; interactions: TemplateInteractions; categoryTrail?: { category: TemplateCategory; parent: TemplateCategory | null } | null }) {
+export function TemplateDetail({ template, related, onBack, subscribed = false, canAddTemplates = false, signedIn = false, interactions, categoryTrail = null }: { template: Template; related: Template[]; onBack: () => void; subscribed?: boolean; canAddTemplates?: boolean; signedIn?: boolean; interactions: TemplateInteractions; categoryTrail?: { category: TemplateCategory; parent: TemplateCategory | null } | null }) {
   const router = useRouter();
   const [heartBurst, setHeartBurst] = useState(false);
   const [sharePopoverOpen, setSharePopoverOpen] = useState(false);
@@ -1770,6 +1951,9 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   const [downloading, setDownloading] = useState(false);
   const [downloadDone, setDownloadDone] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [gateOpen, setGateOpen] = useState(false);
   const detailPrintContentRef = useRef<HTMLDivElement>(null);
 
   const runDetailPrint = useReactToPrint({
@@ -1785,8 +1969,13 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   const canDownload = subscribed || template.isFree;
 
   const requestDownload = () => {
+    if (!signedIn) {
+      if (template.isFree) setGateOpen(true);
+      else setSignInOpen(true);
+      return;
+    }
     if (!canDownload) {
-      router.push(`/subscription?template=${template.slug}`);
+      setPaywallOpen(true);
       return;
     }
     if (downloading) return;
@@ -1802,8 +1991,12 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   };
 
   const requestPrint = () => {
+    if (!signedIn) {
+      setSignInOpen(true);
+      return;
+    }
     if (!canDownload) {
-      router.push(`/subscription?template=${template.slug}`);
+      setPaywallOpen(true);
       return;
     }
     if (printing) return;
@@ -1839,6 +2032,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
           <div className="max-h-[24dvh] w-full overflow-y-auto text-white">
             <h1 className="text-base font-semibold leading-5">{template.name}</h1>
             <DetailDescription description={template.description} tags={[]} overlay />
+                {(template.downloadCount ?? 0) > 0 ? <p className="mt-0.5 text-[11px] text-white/90">{(template.downloadCount ?? 0).toLocaleString()} downloads</p> : null}
           </div>
         }
       />
@@ -1852,7 +2046,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
 
   const suppliesSection = template.supplyItems.length ? (
     <section className="min-w-0">
-      <h2 className="mb-1.5 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">Supplies Needed</h2>
+      <h2 className="mb-1 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">Supplies Needed</h2>
       <p className="break-words text-[11px] leading-5 text-black/80 min-[900px]:text-[13px]">
         {template.supplyItems.map((supply) => supply.name).join(", ")}
       </p>
@@ -1870,10 +2064,10 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   ];
   const specsTable = (
     <section className="min-w-0">
-      <h2 className="mb-1.5 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">Included</h2>
-      <div className="overflow-hidden rounded-xl border border-black/10 text-[11px] leading-5 min-[900px]:text-[13px]">
+      <h2 className="mb-1.5 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">What&apos;s Included</h2>
+      <div className="overflow-hidden rounded-lg border border-black/10 text-[11px] leading-4 min-[900px]:text-[12px]">
         {specRows.map((row, index) => (
-          <div key={row.label} className={`flex items-center justify-between gap-4 px-3 py-1.5 ${index ? "border-t border-black/[0.06]" : ""}`}>
+          <div key={row.label} className={`flex items-center justify-between gap-3 px-2.5 py-1 ${index ? "border-t border-black/[0.06]" : ""}`}>
             <span className="shrink-0 text-black/50">{row.label}</span>
             <span className="break-words text-right text-black/80">{row.value}</span>
           </div>
@@ -1984,7 +2178,9 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
                   </nav>
                 ) : null}
                 <h1 className="text-balance text-lg min-[900px]:text-[27px] font-semibold leading-tight tracking-tight">{template.name}</h1>
+                {template.badge ? <span className="mt-2 inline-flex w-fit rounded-full bg-[#f2eee8] px-2.5 py-0.5 text-xs font-medium text-black/70 min-[900px]:text-sm">{template.badge}</span> : null}
                 <DetailDescription description={template.description} tags={[]} />
+                {(template.downloadCount ?? 0) > 0 ? <p className="mt-2 flex items-center gap-1.5 text-xs text-black/50 min-[900px]:text-sm"><Download className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />{(template.downloadCount ?? 0).toLocaleString()} downloads</p> : null}
                 <div className="mt-4"><DetailDescription description="" tags={template.tags} /></div>
                 {photos.length ? (
                   <button
@@ -2014,12 +2210,12 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
                 <div>
                   {specsTable}
                   {(template.affiliateProducts ?? []).length ? (
-                  <div className="mt-4">
-                    <p className="mb-1.5 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">Supplies</p>
-                    <div className="-mx-1 -mb-4 flex snap-x gap-2 overflow-x-auto px-1 pb-7 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="mt-3">
+                    <p className="mb-1 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">Supplies</p>
+                    <div className="-mx-1 -mb-2 flex snap-x gap-2 overflow-x-auto px-1 pb-5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                       {template.affiliateProducts.map((product) => (
                         <a key={product.name} href={product.href} target="_blank" rel="sponsored noopener noreferrer" aria-label={product.name} className="group block w-[21%] shrink-0 snap-start transition-transform duration-300 ease-out hover:-rotate-2">
-                          <span className="relative block rounded-xl bg-white p-2 pb-3 shadow-lg">
+                          <span className="relative block rounded-xl bg-white p-1.5 pb-2.5 shadow-lg">
                             {product.imageUrl ? <img src={product.imageUrl} alt="" className="aspect-square w-full rounded-lg object-contain" /> : null}
                             <span className="absolute bottom-0 left-1/2 max-w-[90%] -translate-x-1/2 translate-y-1/2 truncate rounded-md bg-white px-2 py-0.5 text-[10px] font-medium leading-3.5 text-black min-[900px]:text-[11px]">{product.shortName}</span>
                           </span>
@@ -2075,6 +2271,9 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
 
   return (
     <main className="fixed inset-0 flex w-screen max-w-none flex-col bg-white text-black">
+      {paywallOpen ? <SubscriptionSheet template={template} onClose={() => setPaywallOpen(false)} /> : null}
+      {signInOpen ? <SignInSheet onClose={() => setSignInOpen(false)} /> : null}
+      {gateOpen ? <EmailGateSheet template={template} onClose={() => setGateOpen(false)} onSignIn={() => { setGateOpen(false); setSignInOpen(true); }} /> : null}
       <div className="hidden shrink-0 md:block">
         <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} />
       </div>

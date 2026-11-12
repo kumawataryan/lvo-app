@@ -1,4 +1,6 @@
 import { hasActiveSubscription } from "@/lib/payments/repository";
+import { recordFreeDownload } from "@/lib/trials/server";
+import { countTemplateDownload } from "@/lib/templates/downloads";
 import { getDropboxTemporaryLink } from "@/lib/dropbox/server";
 import { createSupabaseAuthServerClient, createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
@@ -10,7 +12,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const publicClient = createSupabaseServerClient();
   const { data: template, error } = await publicClient
     .from("templates")
-    .select("printable_path, is_free")
+    .select("id, printable_path, is_free")
     .eq("slug", slug)
     .eq("status", "published")
     .maybeSingle();
@@ -22,10 +24,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return Response.json({ error: "Please sign in to download." }, { status: 401 });
 
+  if (template.is_free) await recordFreeDownload(user.id, template.id);
+
   if (!template.is_free) {
     const subscribed = await hasActiveSubscription(supabase, user.id).catch(() => false);
     if (!subscribed) return Response.json({ error: "Subscribe to download printables." }, { status: 403 });
   }
+
+  await countTemplateDownload(template.id);
 
   const extension = template.printable_path.split(".").pop()?.toLowerCase() || "pdf";
   const filename = `${slug}-template.${extension}`;

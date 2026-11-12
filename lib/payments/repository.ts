@@ -45,17 +45,33 @@ export async function createPendingPurchase(
   return data.id as string;
 }
 
+// Access ends when the paid period ends, even if the status still says active (e.g. after cancellation).
+// Lifetime purchases have no period end, so they stay active.
+function hasNotEnded() {
+  return `current_period_end.is.null,current_period_end.gt.${new Date().toISOString()}`;
+}
+
 export async function hasActiveSubscription(supabase: SupabaseClient, userId: string) {
   const { data, error } = await supabase
     .from("purchases")
     .select("id")
     .eq("user_id", userId)
     .in("status", ["active", "completed"])
+    .or(hasNotEnded())
     .limit(1)
     .maybeSingle();
 
   if (error) throw new Error(`Unable to check subscription: ${error.message}`);
-  return Boolean(data);
+  if (data) return true;
+
+  // A free-month trial also grants access until it ends.
+  const { data: trial } = await supabase
+    .from("free_trials")
+    .select("user_id")
+    .eq("user_id", userId)
+    .gt("ends_at", new Date().toISOString())
+    .maybeSingle();
+  return Boolean(trial);
 }
 
 export async function findPurchaseByRazorpayId(field: "razorpay_order_id" | "razorpay_subscription_id", value: string) {
@@ -87,6 +103,7 @@ export async function getActivePurchase(supabase: SupabaseClient, userId: string
     )
     .eq("user_id", userId)
     .in("status", ["active", "completed"])
+    .or(hasNotEnded())
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

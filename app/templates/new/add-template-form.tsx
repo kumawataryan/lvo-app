@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Check, ChevronDown, FileText, Link2, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -9,6 +9,7 @@ import { optimizeImageToWebp } from "@/lib/templates/image-optimize";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { slugify } from "@/lib/templates/slug";
 import type { AffiliateProductOption } from "@/lib/templates/affiliate";
+import type { SimilarTemplateOption } from "@/lib/templates/similar";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { TemplateTopBar, tabRoute } from "@/components/craft-app";
@@ -34,6 +35,7 @@ export type InitialTemplateData = {
   supplies: string[];
   specs: Array<{ label: string; value: string }>;
   affiliateProductIds: string[];
+  similarOptions: SimilarTemplateOption[];
   tags: string[];
   printablePath: string;
   images: Array<{ path: string; url: string }>;
@@ -90,6 +92,21 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
     () => initialData?.specs.map((spec) => ({ id: crypto.randomUUID(), label: spec.label, value: spec.value })) ?? [],
   );
   const [affiliateIds, setAffiliateIds] = useState<string[]>(initialData?.affiliateProductIds ?? []);
+  const [similarSelected, setSimilarSelected] = useState<SimilarTemplateOption[]>(initialData?.similarOptions ?? []);
+  const [similarResults, setSimilarResults] = useState<SimilarTemplateOption[]>([]);
+  const [similarOpen, setSimilarOpen] = useState(false);
+  const [similarQuery, setSimilarQuery] = useState("");
+  useEffect(() => {
+    if (!similarOpen) return;
+    const handle = window.setTimeout(() => {
+      const params = new URLSearchParams({ q: similarQuery, exclude: initialData?.id ?? "" });
+      fetch(`/api/templates/similar-search?${params}`)
+        .then((response) => (response.ok ? response.json() : { options: [] }))
+        .then((data: { options?: SimilarTemplateOption[] }) => setSimilarResults(data.options ?? []))
+        .catch(() => setSimilarResults([]));
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [similarOpen, similarQuery, initialData?.id]);
   const [affiliateOpen, setAffiliateOpen] = useState(false);
   const [affiliateQuery, setAffiliateQuery] = useState("");
   const [tags, setTags] = useState<string[]>(initialData?.tags ?? []);
@@ -236,6 +253,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
           supplies: supplies.split(",").map((item) => item.trim()).filter(Boolean),
           specs: specs.map(({ label, value }) => ({ label: label.trim(), value: value.trim() })).filter((spec) => spec.label && spec.value),
           affiliateProductIds: affiliateIds,
+          similarTemplateIds: similarSelected.map((option) => option.id),
           tags: [...tags, ...tagInput.split(",").map((item) => item.trim()).filter(Boolean)],
         }),
       });
@@ -481,6 +499,37 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
             })() : (
               <p className="text-sm text-black/50">No affiliate products are available yet.</p>
             )}
+          </Field>
+
+          <Field label="Similar templates" optional>
+            <div className="relative">
+              <button type="button" aria-expanded={similarOpen} onClick={() => setSimilarOpen((open) => !open)} className="flex h-12 w-full items-center justify-between gap-3 rounded-xl bg-[#f2f2f2] px-4 text-left text-sm outline-none ring-black/10 transition focus:ring-2">
+                <span className={`min-w-0 truncate ${similarSelected.length ? "text-black" : "text-black/35"}`}>{similarSelected.length ? similarSelected.map((option) => option.title).join(", ") : "Search any template"}</span>
+                <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-black/60 transition ${similarOpen ? "rotate-180" : ""}`} strokeWidth={2.25} />
+              </button>
+              {similarOpen ? (
+                <div className="absolute left-0 right-0 z-20 mt-2 rounded-xl bg-white p-2 shadow-lg ring-1 ring-black/10">
+                  <div className="flex h-10 items-center gap-2 rounded-lg bg-[#f2f2f2] px-3">
+                    <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-black/40" />
+                    <input autoFocus value={similarQuery} onChange={(event) => setSimilarQuery(event.target.value)} placeholder="Search all templates" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-black/35" />
+                  </div>
+                  <ul className="mt-2 max-h-64 overflow-y-auto">
+                    {similarResults.length ? similarResults.map((option) => {
+                      const selected = similarSelected.some((item) => item.id === option.id);
+                      return (
+                        <li key={option.id}>
+                          <button type="button" role="option" aria-selected={selected} onClick={() => setSimilarSelected((current) => (selected ? current.filter((item) => item.id !== option.id) : [...current, option]))} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition hover:bg-[#f2f2f2]">
+                            {option.imageUrl ? <img src={option.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded bg-white object-cover" /> : null}
+                            <span className="min-w-0 flex-1 truncate">{option.title}</span>
+                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${selected ? "border-brand bg-brand text-white" : "border-black/20"}`}>{selected ? <Check className="h-3 w-3" strokeWidth={3} /> : null}</span>
+                          </button>
+                        </li>
+                      );
+                    }) : <li className="px-2 py-3 text-sm text-black/45">No templates match.</li>}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           </Field>
 
           <Field label="Details (label and value)" optional>

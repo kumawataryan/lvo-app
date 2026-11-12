@@ -2,6 +2,8 @@ import "server-only";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { AffiliateProductOption } from "@/lib/templates/affiliate";
+import { getTemplateBadgeMap } from "@/lib/templates/downloads";
+import type { SimilarTemplateOption } from "@/lib/templates/similar";
 import { ALL_TEMPLATE_CATEGORIES, DEFAULT_TEMPLATE_CATEGORIES, type AffiliateProductLink, type PublishedTemplate, type TemplateCategory, type TemplateDifficulty, type TemplateListFilters } from "@/lib/templates/types";
 
 type TemplateRow = {
@@ -10,6 +12,7 @@ type TemplateRow = {
   title: string;
   short_description: string;
   duration_minutes: number;
+  download_count?: number | null;
   minimum_age?: number | null;
   maximum_age?: number | null;
   difficulty: TemplateDifficulty;
@@ -35,6 +38,7 @@ type TemplateRow = {
     supply: { id: string; name: string; icon: string | null };
   }>;
   template_specs?: Array<{ label: string; value: string; sort_order: number }>;
+  template_similar?: Array<{ sort_order: number; similar_template_id: string }>;
   template_affiliate_products?: Array<{
     sort_order: number;
     affiliate_product: { id: string; name: string; short_name: string; image_path: string; affiliate_url: string; is_active: boolean } | null;
@@ -51,6 +55,7 @@ const templateBaseFields = `
   short_description,
   duration_minutes,
   difficulty,
+  download_count,
   video_path,
   video_embed_url,
   thumbnail_path,
@@ -71,6 +76,7 @@ const templateRelations = `
   template_supplies(quantity, notes, sort_order, supply:supplies(id, name, icon)),
   template_specs(label, value, sort_order),
   template_affiliate_products(sort_order, affiliate_product:affiliate_products(id, name, short_name, image_path, affiliate_url, is_active)),
+  template_similar!template_id(sort_order, similar_template_id),
   tag_assignments:template_tag_assignments(tag:template_tags(id, name, slug))
 `;
 
@@ -137,6 +143,7 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     title: row.title,
     shortDescription: row.short_description,
     durationMinutes: row.duration_minutes,
+    downloadCount: row.download_count ?? 0,
     minimumAge: row.minimum_age ?? null,
     maximumAge: row.maximum_age ?? null,
     difficulty: row.difficulty,
@@ -159,6 +166,7 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     specs: [...(row.template_specs ?? [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((spec) => ({ label: spec.label, value: spec.value, sortOrder: spec.sort_order })),
+    similarTemplateIds: [...(row.template_similar ?? [])].sort((a, b) => a.sort_order - b.sort_order).map((link) => link.similar_template_id),
     affiliateProducts: [...(row.template_affiliate_products ?? [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .flatMap(({ affiliate_product: product }) => (product?.is_active ? [toAffiliateProductLink(product)] : [])),
@@ -268,7 +276,7 @@ export async function listTemplateSubcategories(parentId: string): Promise<Templ
   }));
 }
 
-export async function listPublishedTemplates(filters: TemplateListFilters = {}) {
+async function listPublishedTemplatesUnbadged(filters: TemplateListFilters = {}) {
   const supabase = createSupabaseServerClient();
   if (filters.search) {
     const limit = Math.min(Math.max(filters.limit ?? 50, 1), 100);
@@ -391,3 +399,13 @@ export async function listActiveAffiliateProducts(): Promise<AffiliateProductOpt
   if (error) throw new Error(`Unable to load affiliate products: ${error.message}`);
   return (data ?? []).map((row) => ({ id: row.id, name: row.name, shortName: row.short_name, imageUrl: affiliateImageUrl(row.image_path) }));
 }
+
+// Published template lists, each with its "Top 10 this week" / "Popular this month" badge when it has one.
+export async function listPublishedTemplates(filters: TemplateListFilters = {}) {
+  const templates = await listPublishedTemplatesUnbadged(filters);
+  if (!templates.length) return templates;
+  const badges = await getTemplateBadgeMap().catch(() => new Map<string, string>());
+  return templates.map((template) => ({ ...template, badge: badges.get(template.id) ?? null }));
+}
+
+// Published templates an author can pick as similar to another template.

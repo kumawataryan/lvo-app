@@ -28,6 +28,7 @@ type EditTemplateRow = {
   template_supplies: Array<{ sort_order: number; supply: { name: string } | null }>;
   template_specs: Array<{ label: string; value: string; sort_order: number }>;
   template_affiliate_products: Array<{ sort_order: number; affiliate_product_id: string }>;
+  template_similar: Array<{ sort_order: number; similar: { id: string; title: string; thumbnail_path: string | null } | null }>;
   tag_assignments: Array<{ tag: { name: string } | null }>;
 };
 
@@ -52,6 +53,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
         template_supplies(sort_order, supply:supplies(name)),
         template_specs(label, value, sort_order),
         template_affiliate_products(sort_order, affiliate_product_id),
+        template_similar!template_id(sort_order, similar:templates!similar_template_id(id, title, thumbnail_path)),
         tag_assignments:template_tag_assignments(tag:template_tags(name))
       `)
       .eq("id", templateId)
@@ -92,6 +94,9 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     specs: [...(template.template_specs ?? [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((spec) => ({ label: spec.label, value: spec.value })),
+    similarOptions: [...(template.template_similar ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .flatMap((link) => (link.similar ? [{ id: link.similar.id, title: link.similar.title, imageUrl: publicMediaUrl(link.similar.thumbnail_path) }] : [])),
     affiliateProductIds: [...(template.template_affiliate_products ?? [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((link) => link.affiliate_product_id),

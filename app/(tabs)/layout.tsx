@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -5,7 +6,8 @@ import AppShell from "@/components/craft-app";
 import { getSessionUser } from "@/lib/auth/session";
 import { canUserAddTemplates, isTemplateAdmin } from "@/lib/auth/permissions";
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
-import { getActivePurchase } from "@/lib/payments/repository";
+import { getActivePurchase, hasActiveSubscription } from "@/lib/payments/repository";
+import { isTrialOfferEligible } from "@/lib/trials/server";
 import { createSupabaseAuthServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import { getCachedCategories, getCachedTemplates } from "@/lib/templates/cached";
 import { DEFAULT_TEMPLATE_CATEGORIES } from "@/lib/templates/types";
@@ -27,7 +29,13 @@ export default async function TabsLayout({ children }: { children: ReactNode }) 
     purchasePromise,
     onboardingPromise,
   ]);
-  const subscribed = Boolean(purchase);
+  // Access comes from a paid plan or an active free-month trial.
+  const hasAccess = user ? await hasActiveSubscription(supabase, user.id).catch(() => false) : false;
+  const subscribed = Boolean(purchase) || hasAccess;
+  const trialOffer = user ? await isTrialOfferEligible(user.id).catch(() => false) : false;
+  // Rupees for India (and when the country is unknown); dollars elsewhere. Vercel sets this header on each request.
+  const country = (await headers()).get("x-vercel-ip-country");
+  const currency: "INR" | "USD" = country && country !== "IN" ? "USD" : "INR";
 
   let parentName = "";
   let profileKids: Array<{ id: string; name: string; birthYear: number; avatar: string; gender: string | null }> = [];
@@ -43,6 +51,8 @@ export default async function TabsLayout({ children }: { children: ReactNode }) 
       initialCategories={initialCategories}
       canAddTemplates={canUserAddTemplates(user)}
       isAdmin={isTemplateAdmin(user)}
+      trialOffer={trialOffer}
+      currency={currency}
       subscribed={subscribed}
       parentName={parentName}
       subscription={purchase ? {
