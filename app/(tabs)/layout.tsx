@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import AppShell from "@/components/craft-app";
 import { getSessionUser } from "@/lib/auth/session";
-import { canUserAddTemplates } from "@/lib/auth/permissions";
+import { canUserAddTemplates, isTemplateAdmin } from "@/lib/auth/permissions";
 import { getFamilyOnboarding } from "@/lib/onboarding/server";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
@@ -42,6 +42,7 @@ export default async function TabsLayout({ children }: { children: ReactNode }) 
       initialTemplates={initialTemplates}
       initialCategories={initialCategories}
       canAddTemplates={canUserAddTemplates(user)}
+      isAdmin={isTemplateAdmin(user)}
       subscribed={subscribed}
       parentName={parentName}
       subscription={purchase ? {

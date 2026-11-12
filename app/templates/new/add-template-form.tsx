@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { Check, ChevronDown, FileText, Link2, LoaderCircle, Plus, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, FileText, Link2, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl, videoEmbedPreviewSrc } from "@/lib/templates/video-embed";
 import { optimizeImageToWebp } from "@/lib/templates/image-optimize";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { slugify } from "@/lib/templates/slug";
+import type { AffiliateProductOption } from "@/lib/templates/affiliate";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { TemplateTopBar, tabRoute } from "@/components/craft-app";
@@ -32,6 +33,7 @@ export type InitialTemplateData = {
   isFree: boolean;
   supplies: string[];
   specs: Array<{ label: string; value: string }>;
+  affiliateProductIds: string[];
   tags: string[];
   printablePath: string;
   images: Array<{ path: string; url: string }>;
@@ -67,7 +69,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
   return results;
 }
 
-export function AddTemplateForm({ categories, subscribed = false, initialData }: { categories: Category[]; subscribed?: boolean; initialData?: InitialTemplateData }) {
+export function AddTemplateForm({ categories, subscribed = false, initialData, affiliateOptions = [] }: { categories: Category[]; subscribed?: boolean; initialData?: InitialTemplateData; affiliateOptions?: AffiliateProductOption[] }) {
   const router = useRouter();
   const editing = Boolean(initialData);
   const [mode, setMode] = useState<"single" | "import">("single");
@@ -87,6 +89,9 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
   const [specs, setSpecs] = useState<Array<{ id: string; label: string; value: string }>>(
     () => initialData?.specs.map((spec) => ({ id: crypto.randomUUID(), label: spec.label, value: spec.value })) ?? [],
   );
+  const [affiliateIds, setAffiliateIds] = useState<string[]>(initialData?.affiliateProductIds ?? []);
+  const [affiliateOpen, setAffiliateOpen] = useState(false);
+  const [affiliateQuery, setAffiliateQuery] = useState("");
   const [tags, setTags] = useState<string[]>(initialData?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
   const [videoUrl, setVideoUrl] = useState(initialData?.videoUrl ?? "");
@@ -230,6 +235,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
           galleryPaths,
           supplies: supplies.split(",").map((item) => item.trim()).filter(Boolean),
           specs: specs.map(({ label, value }) => ({ label: label.trim(), value: value.trim() })).filter((spec) => spec.label && spec.value),
+          affiliateProductIds: affiliateIds,
           tags: [...tags, ...tagInput.split(",").map((item) => item.trim()).filter(Boolean)],
         }),
       });
@@ -435,6 +441,46 @@ export function AddTemplateForm({ categories, subscribed = false, initialData }:
 
           <Field label="Supplies (comma separated)" optional>
             <input value={supplies} onChange={(event) => setSupplies(event.target.value)} placeholder="Paper, scissors, glue" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+          </Field>
+
+          <Field label="Affiliate products" optional>
+            {affiliateOptions.length ? (() => {
+              const query = affiliateQuery.trim().toLowerCase();
+              const visible = affiliateOptions.filter((option) => !query || option.shortName.toLowerCase().includes(query) || option.name.toLowerCase().includes(query));
+              const selectedNames = affiliateOptions.filter((option) => affiliateIds.includes(option.id)).map((option) => option.shortName);
+              return (
+                <div className="relative">
+                  <button type="button" aria-expanded={affiliateOpen} onClick={() => setAffiliateOpen((open) => !open)} className="flex h-12 w-full items-center justify-between gap-3 rounded-xl bg-[#f2f2f2] px-4 text-left text-sm outline-none ring-black/10 transition focus:ring-2">
+                    <span className={`min-w-0 truncate ${selectedNames.length ? "text-black" : "text-black/35"}`}>{selectedNames.length ? selectedNames.join(", ") : "Select products"}</span>
+                    <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-black/60 transition ${affiliateOpen ? "rotate-180" : ""}`} strokeWidth={2.25} />
+                  </button>
+                  {affiliateOpen ? (
+                    <div className="absolute left-0 right-0 z-20 mt-2 rounded-xl bg-white p-2 shadow-lg ring-1 ring-black/10">
+                      <div className="flex h-10 items-center gap-2 rounded-lg bg-[#f2f2f2] px-3">
+                        <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-black/40" />
+                        <input autoFocus value={affiliateQuery} onChange={(event) => setAffiliateQuery(event.target.value)} placeholder="Search products" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-black/35" />
+                      </div>
+                      <ul className="mt-2 max-h-64 overflow-y-auto">
+                        {visible.length ? visible.map((option) => {
+                          const selected = affiliateIds.includes(option.id);
+                          return (
+                            <li key={option.id}>
+                              <button type="button" role="option" aria-selected={selected} onClick={() => setAffiliateIds((current) => (selected ? current.filter((id) => id !== option.id) : [...current, option.id]))} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition hover:bg-[#f2f2f2]">
+                                {option.imageUrl ? <img src={option.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded bg-white object-contain" /> : null}
+                                <span className="min-w-0 flex-1 truncate">{option.shortName}<span className="text-black/45"> · {option.name}</span></span>
+                                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${selected ? "border-brand bg-brand text-white" : "border-black/20"}`}>{selected ? <Check className="h-3 w-3" strokeWidth={3} /> : null}</span>
+                              </button>
+                            </li>
+                          );
+                        }) : <li className="px-2 py-3 text-sm text-black/45">No products match.</li>}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })() : (
+              <p className="text-sm text-black/50">No affiliate products are available yet.</p>
+            )}
           </Field>
 
           <Field label="Details (label and value)" optional>

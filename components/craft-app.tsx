@@ -4,7 +4,7 @@ import { createContext, forwardRef, Fragment, startTransition, useCallback, useC
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download,  FastForward,  Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, CircleHelp, LayoutGrid, LoaderCircle, Lock, LogOut, MoonStar, MoreHorizontal, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote,   Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download,  FastForward,  Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, LayoutGrid, LoaderCircle, Lock, LogOut, MoonStar, MoreHorizontal, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote,   Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { AgeRangeSelector } from "@/components/age-range-selector";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { toast } from "@/components/ui/toast";
@@ -13,7 +13,7 @@ import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious
 import { EmailIcon, EmailShareButton, FacebookIcon, FacebookShareButton, LinkedinIcon, LinkedinShareButton, PinterestIcon, PinterestShareButton, ThreadsIcon, ThreadsShareButton, TwitterIcon, TwitterShareButton, WhatsappIcon, WhatsappShareButton } from "react-share";
 import { useReactToPrint } from "react-to-print";
 import { fetchPublishedTemplates } from "@/lib/templates/client";
-import { DEFAULT_TEMPLATE_CATEGORIES, type PublishedTemplate, type TemplateCategory } from "@/lib/templates/types";
+import { DEFAULT_TEMPLATE_CATEGORIES, type AffiliateProductLink, type PublishedTemplate, type TemplateCategory } from "@/lib/templates/types";
 import { embedFallbackRatio, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { useEmbedPlayer } from "@/lib/video/use-embed-player";
 import { useEmbedThumbnail } from "@/lib/video/use-embed-thumbnail";
@@ -248,6 +248,7 @@ export type Template = {
   galleryAltText: string[];
   supplyItems: Array<{ name: string; icon: string | null }>;
   specs: Array<{ label: string; value: string }>;
+  affiliateProducts: AffiliateProductLink[];
   tags: string[];
   hasPrintable: boolean;
   canPrint: boolean;
@@ -277,6 +278,8 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     galleryAltText: template.galleryImages.map((image) => image.altText),
     supplyItems: template.supplies.map((supply) => ({ name: supply.name, icon: supply.icon })),
     specs: template.specs.map((spec) => ({ label: spec.label, value: spec.value })),
+    // Cached template data from before this field existed has no affiliateProducts.
+    affiliateProducts: template.affiliateProducts ?? [],
     tags: template.tags ?? [],
     hasPrintable: template.hasPrintable,
     canPrint: template.hasPrintable && !template.printableIsZip,
@@ -428,6 +431,7 @@ type AppShellContextValue = {
   interactions: TemplateInteractions;
   subscribed: boolean;
   canAddTemplates: boolean;
+  isAdmin: boolean;
   parentName: string;
   subscription: SubscriptionSummary | null;
   profileKids: ProfileKidSummary[];
@@ -456,7 +460,7 @@ export function tabRoute(tab: Tab): string {
   return TAB_ROUTES[tab] ?? "/";
 }
 
-function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT_TEMPLATE_CATEGORIES, canAddTemplates = false, subscribed = false, parentName = "", subscription = null, profileKids = [] }: { children: ReactNode; initialTemplates?: PublishedTemplate[]; initialCategories?: TemplateCategory[]; canAddTemplates?: boolean; subscribed?: boolean; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
+function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT_TEMPLATE_CATEGORIES, canAddTemplates = false, isAdmin = false, subscribed = false, parentName = "", subscription = null, profileKids = [] }: { children: ReactNode; initialTemplates?: PublishedTemplate[]; initialCategories?: TemplateCategory[]; canAddTemplates?: boolean; isAdmin?: boolean; subscribed?: boolean; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const [templates, setTemplates] = useState<Template[]>(() => initialTemplates.map(mapPublishedTemplate));
@@ -505,7 +509,7 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
   };
 
   const contextValue: AppShellContextValue = {
-    templates, templatesError, categories, interactions, subscribed, canAddTemplates,
+    templates, templatesError, categories, interactions, subscribed, canAddTemplates, isAdmin,
     parentName, subscription, profileKids, activeTab, goToTab, openTemplate,
   };
 
@@ -623,8 +627,8 @@ export function SearchTabContent({ initialQuery = "" }: { initialQuery?: string 
 }
 
 export function ProfileTabContent() {
-  const { templates, interactions, subscribed, canAddTemplates, activeTab, goToTab, parentName, subscription, profileKids } = useAppShell();
-  return <ProfileScreen templates={templates} interactions={interactions} subscribed={subscribed} canAddTemplates={canAddTemplates} activeTab={activeTab} onTabChange={goToTab} parentName={parentName} subscription={subscription} profileKids={profileKids} />;
+  const { templates, interactions, subscribed, canAddTemplates, isAdmin, activeTab, goToTab, parentName, subscription, profileKids } = useAppShell();
+  return <ProfileScreen templates={templates} interactions={interactions} subscribed={subscribed} canAddTemplates={canAddTemplates} isAdmin={isAdmin} activeTab={activeTab} onTabChange={goToTab} parentName={parentName} subscription={subscription} profileKids={profileKids} />;
 }
 
 export function StoriesScreen({ onOpenStory }: { onOpenStory: (story: Story) => void }) {
@@ -1096,7 +1100,7 @@ export function CategoryDetailScreen({ category, subcategories, initialTemplates
   );
 }
 
-function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddTemplates, activeTab, onTabChange, interactions, initialQuery = "" }: { templates: Template[]; categories: TemplateCategory[]; onOpenDetail: (template: Template) => void; subscribed: boolean; canAddTemplates?: boolean; activeTab?: Tab; onTabChange?: (tab: Tab) => void; interactions: TemplateInteractions; initialQuery?: string }) {
+function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddTemplates, activeTab, onTabChange, interactions, initialQuery = "" }: { templates: Template[]; categories: TemplateCategory[]; onOpenDetail: (template: Template) => void; subscribed: boolean; canAddTemplates?: boolean; isAdmin?: boolean; activeTab?: Tab; onTabChange?: (tab: Tab) => void; interactions: TemplateInteractions; initialQuery?: string }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery.slice(0, 80));
   const [serverSearch, setServerSearch] = useState<{ query: string; templates: Template[] } | null>(null);
@@ -1847,9 +1851,12 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   );
 
   const suppliesSection = template.supplyItems.length ? (
-    <p className="min-w-0 break-words text-xs leading-5 text-black/80 min-[900px]:text-sm">
-      <span className="font-semibold">Supplies:</span> {template.supplyItems.map((supply) => supply.name).join(", ")}
-    </p>
+    <section className="min-w-0">
+      <h2 className="mb-1.5 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">Supplies Needed</h2>
+      <p className="break-words text-[11px] leading-5 text-black/80 min-[900px]:text-[13px]">
+        {template.supplyItems.map((supply) => supply.name).join(", ")}
+      </p>
+    </section>
   ) : null;
 
   const ageGroup = template.minimumAge != null && template.maximumAge != null
@@ -1863,15 +1870,15 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   ];
   const specsTable = (
     <section className="min-w-0">
-      <h2 className="mb-2 text-xs font-semibold text-black">Details</h2>
-      <dl className="divide-y divide-black/[0.06] text-xs">
-        {specRows.map((row) => (
-          <div key={row.label} className="flex items-baseline justify-between gap-4 py-2">
-            <dt className="shrink-0 text-black/45">{row.label}</dt>
-            <dd className="text-right font-medium text-black/85 break-words">{row.value}</dd>
+      <h2 className="mb-1.5 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">Included</h2>
+      <div className="overflow-hidden rounded-xl border border-black/10 text-[11px] leading-5 min-[900px]:text-[13px]">
+        {specRows.map((row, index) => (
+          <div key={row.label} className={`flex items-center justify-between gap-4 px-3 py-1.5 ${index ? "border-t border-black/[0.06]" : ""}`}>
+            <span className="shrink-0 text-black/50">{row.label}</span>
+            <span className="break-words text-right text-black/80">{row.value}</span>
           </div>
         ))}
-      </dl>
+      </div>
     </section>
   );
 
@@ -1965,61 +1972,74 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
             <div className="flex flex-col gap-2 min-[900px]:gap-5">
               <div className="hidden min-[900px]:block">
                 {template.categorySlug ? (
-                  <nav aria-label="Category" className="hidden min-[900px]:inline-flex h-8 min-[900px]:mb-3 min-[900px]:h-9 items-stretch divide-x divide-white/20 overflow-hidden rounded-xl bg-brand text-xs font-semibold text-white min-[900px]:text-sm">
+                  <nav aria-label="Category" className="hidden min-[900px]:inline-flex min-[900px]:mb-3 h-6 items-stretch divide-x divide-white/20 overflow-hidden rounded-lg bg-brand text-[11px] font-semibold text-white">
                     {categoryTrail?.parent ? (
-                      <Link href={`/categories/${categoryTrail.parent.slug}`} aria-label={`Browse ${categoryTrail.parent.name}`} className="inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25">
-                        <CategoryIcon icon={categoryTrail.parent.icon} className="h-4 w-4 shrink-0" />{categoryTrail.parent.name}
+                      <Link href={`/categories/${categoryTrail.parent.slug}`} aria-label={`Browse ${categoryTrail.parent.name}`} className="inline-flex h-full items-center px-2.5 transition hover:bg-white/15 active:bg-white/25">
+                        {categoryTrail.parent.name}
                       </Link>
                     ) : null}
-                    <Link href={`/categories/${template.categorySlug}`} aria-label={`Browse ${template.category}`} className={`inline-flex h-full items-center gap-2 px-3 transition hover:bg-white/15 active:bg-white/25 ${categoryTrail?.parent ? "text-white/85" : ""}`}>
-                      {categoryTrail?.parent ? null : <CategoryIcon icon={categoryTrail?.category.icon} className="h-4 w-4 shrink-0" />}{template.category}
+                    <Link href={`/categories/${template.categorySlug}`} aria-label={`Browse ${template.category}`} className={`inline-flex h-full items-center px-2.5 transition hover:bg-white/15 active:bg-white/25 ${categoryTrail?.parent ? "text-white/85" : ""}`}>
+                      {template.category}
                     </Link>
                   </nav>
                 ) : null}
                 <h1 className="text-balance text-lg min-[900px]:text-[27px] font-semibold leading-tight tracking-tight">{template.name}</h1>
                 <DetailDescription description={template.description} tags={[]} />
-                {suppliesSection ? <div className="mt-3">{suppliesSection}</div> : null}
-                <div className="mt-5"><DetailDescription description="" tags={template.tags} /></div>
+                <div className="mt-4"><DetailDescription description="" tags={template.tags} /></div>
+                {photos.length ? (
+                  <button
+                    type="button"
+                    aria-label={`View gallery, ${photos.length} ${photos.length === 1 ? "photo" : "photos"}`}
+                    title="View gallery"
+                    onClick={() => setGalleryTemplate(template)}
+                    className="relative mt-6 hidden h-14 w-14 shrink-0 touch-manipulation rounded-2xl transition active:scale-95 min-[900px]:block"
+                  >
+                    {photos.slice(0, 3).reverse().map((src, index, images) => {
+                      const depth = images.length - 1 - index;
+                      return (
+                        <span
+                          key={`${src}-${index}`}
+                          className="absolute bottom-0 right-0 h-[52px] w-[52px] overflow-hidden rounded-xl"
+                          style={{ transform: `translate(${-depth * 2}px, ${-depth * 2}px)` }}
+                        >
+                          <Image src={src} alt="" fill sizes="52px" className="object-cover" />
+                        </span>
+                      );
+                    })}
+                    {photos.length > 1 ? <span className="absolute bottom-0 right-0 flex h-[52px] w-[52px] items-center justify-center rounded-xl bg-black/35 text-sm font-semibold text-white">+{photos.length - 1}</span> : null}
+                  </button>
+                ) : null}
               </div>
-            {photos.length ? (
-              <button
-                type="button"
-                aria-label={`View gallery, ${photos.length} ${photos.length === 1 ? "photo" : "photos"}`}
-                title="View gallery"
-                onClick={() => setGalleryTemplate(template)}
-                className="relative hidden h-14 w-14 shrink-0 touch-manipulation rounded-2xl transition active:scale-95 min-[900px]:block"
-              >
-                {photos.slice(0, 3).reverse().map((src, index, images) => {
-                  const depth = images.length - 1 - index;
-                  return (
-                    <span
-                      key={`${src}-${index}`}
-                      className="absolute bottom-0 right-0 h-[52px] w-[52px] overflow-hidden rounded-xl"
-                      style={{ transform: `translate(${-depth * 2}px, ${-depth * 2}px)` }}
-                    >
-                      <Image src={src} alt="" fill sizes="52px" className="object-cover" />
-                    </span>
-                  );
-                })}
-                {photos.length > 1 ? <span className="absolute bottom-0 right-0 flex h-[52px] w-[52px] items-center justify-center rounded-xl bg-black/35 text-sm font-semibold text-white">+{photos.length - 1}</span> : null}
-              </button>
-            ) : null}
-              <div className="mt-6 hidden min-[900px]:block">{specsTable}</div>
+              <div className="mb-3 hidden min-[900px]:block">
+                <div>
+                  {specsTable}
+                  {(template.affiliateProducts ?? []).length ? (
+                  <div className="mt-4">
+                    <p className="mb-1.5 text-[11px] font-semibold text-black/50 min-[900px]:text-[13px]">Supplies</p>
+                    <div className="-mx-1 -mb-4 flex snap-x gap-2 overflow-x-auto px-1 pb-7 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {template.affiliateProducts.map((product) => (
+                        <a key={product.name} href={product.href} target="_blank" rel="sponsored noopener noreferrer" aria-label={product.name} className="group block w-[21%] shrink-0 snap-start transition-transform duration-300 ease-out hover:-rotate-2">
+                          <span className="relative block rounded-xl bg-white p-2 pb-3 shadow-lg">
+                            {product.imageUrl ? <img src={product.imageUrl} alt="" className="aspect-square w-full rounded-lg object-contain" /> : null}
+                            <span className="absolute bottom-0 left-1/2 max-w-[90%] -translate-x-1/2 translate-y-1/2 truncate rounded-md bg-white px-2 py-0.5 text-[10px] font-medium leading-3.5 text-black min-[900px]:text-[11px]">{product.shortName}</span>
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             <div className="mt-auto hidden flex-col gap-2 min-[900px]:flex">
-              <div className="mb-3 flex flex-col gap-2 text-[11px] leading-4 text-black/50">
-                <Link href="/contact" className="group flex items-center gap-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f2f2f2]">
-                    <WandSparkles className="h-3 w-3 text-black/55" strokeWidth={1.5} aria-hidden="true" />
-                  </span>
-                  <span className="text-black/65 group-hover:text-black">Need a custom template?</span>
+              <div className="mb-2 flex items-center gap-2 text-[10px] text-black/50 min-[900px]:text-[11px]">
+                <Link href="/contact" className="group">
+                  <span className="text-black/80 group-hover:text-black">Need a custom template?</span>
                 </Link>
-                <Link href="/contact" className="group flex items-center gap-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f2f2f2]">
-                    <CircleHelp className="h-3 w-3 text-black/55" strokeWidth={1.5} aria-hidden="true" />
-                  </span>
-                  <span className="text-black/65 group-hover:text-black">Need help?</span>
+                <span aria-hidden="true" className="h-3 w-px bg-black/15" />
+                <Link href="/contact" className="group">
+                  <span className="text-black/80 group-hover:text-black">Need help?</span>
                 </Link>
               </div>
               <div className="grid auto-cols-fr grid-flow-col gap-2">
@@ -2129,10 +2149,10 @@ function DetailDescription({ description, tags, overlay = false }: { description
         </p>
       ) : null}
       {tags.length ? (
-        <div className={`flex flex-wrap gap-2 ${tokens.length ? "mt-2 min-[900px]:mt-4" : ""}`}>
-          {(tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT)).map((tag) => <Link key={tag} href={tagHref(tag)} className="rounded-lg bg-white min-[900px]:bg-[#f2f2f2] px-2.5 py-1 text-xs font-medium text-black/70 transition hover:bg-[#e9e9e9]">{tag}</Link>)}
+        <div className={`flex flex-wrap gap-1 text-[10px] min-[900px]:text-[11px] ${tokens.length ? "mt-2 min-[900px]:mt-4" : ""}`}>
+          {(tagsExpanded ? tags : tags.slice(0, COLLAPSED_TAG_COUNT)).map((tag) => <Link key={tag} href={tagHref(tag)} className="rounded bg-[#f2f2f2] px-2 py-0.5 text-black/60 transition hover:bg-[#e9e9e9] hover:text-black">{tag}</Link>)}
           {tags.length > COLLAPSED_TAG_COUNT ? (
-            <button type="button" onClick={() => setTagsExpanded((current) => !current)} className="rounded-lg bg-white min-[900px]:bg-[#f2f2f2] min-[900px]:border min-[900px]:border-black/10 px-2.5 py-1 text-xs font-semibold text-black transition hover:bg-[#f2f2f2]">
+            <button type="button" onClick={() => setTagsExpanded((current) => !current)} className="rounded bg-[#f2f2f2] px-2 py-0.5 font-medium text-black/60 transition hover:bg-[#e9e9e9] hover:text-black">
               {tagsExpanded ? "Show less" : `+${tags.length - COLLAPSED_TAG_COUNT} more`}
             </button>
           ) : null}
@@ -2340,7 +2360,7 @@ function StoryThumbnailIcon({ story, progress, playing, dark, onTogglePlaying }:
   );
 }
 
-function ProfileScreen({ templates, interactions, subscribed = false, canAddTemplates = false, activeTab, onTabChange, parentName = "", subscription = null, profileKids = [] }: { templates: Template[]; interactions: TemplateInteractions; subscribed?: boolean; canAddTemplates?: boolean; activeTab?: Tab; onTabChange?: (tab: Tab) => void; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
+function ProfileScreen({ templates, interactions, subscribed = false, canAddTemplates = false, isAdmin = false, activeTab, onTabChange, parentName = "", subscription = null, profileKids = [] }: { templates: Template[]; interactions: TemplateInteractions; subscribed?: boolean; canAddTemplates?: boolean; isAdmin?: boolean; activeTab?: Tab; onTabChange?: (tab: Tab) => void; parentName?: string; subscription?: SubscriptionSummary | null; profileKids?: ProfileKidSummary[] }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>();
   const savedTemplates = templates.filter((template) => interactions.saved.has(template.id));
@@ -2433,6 +2453,13 @@ function ProfileScreen({ templates, interactions, subscribed = false, canAddTemp
           <button type="button" onClick={() => router.push("/templates/manage")} className="flex w-full items-center gap-3 rounded-2xl bg-[#f2f2f2] p-4 text-left transition active:scale-[0.98]">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white"><LayoutGrid className="h-5 w-5" /></span>
             <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Manage templates</span><span className="mt-1 block truncate text-xs text-black/45">Edit templates you&apos;ve added</span></span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-black/30" />
+          </button>
+        ) : null}
+        {isAdmin ? (
+          <button type="button" onClick={() => router.push("/templates/affiliate-products")} className="flex w-full items-center gap-3 rounded-2xl bg-[#f2f2f2] p-4 text-left transition active:scale-[0.98]">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white"><Share2 className="h-5 w-5" /></span>
+            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Affiliate products</span><span className="mt-1 block truncate text-xs text-black/45">Add and manage shop picks</span></span>
             <ChevronRight className="h-4 w-4 shrink-0 text-black/30" />
           </button>
         ) : null}

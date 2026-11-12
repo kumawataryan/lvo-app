@@ -1,4 +1,4 @@
-import { canUserAddTemplates } from "@/lib/auth/permissions";
+import { canUserAddTemplates, isTemplateAdmin } from "@/lib/auth/permissions";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 const ID_PATTERN = /^[0-9a-f-]{36}$/i;
@@ -23,7 +23,11 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null) as { uploadGroup?: unknown; folder?: unknown; extension?: unknown; index?: unknown; name?: unknown } | null;
   const uploadGroup = typeof body?.uploadGroup === "string" ? body.uploadGroup : "";
-  const folder = body?.folder === "gallery" || body?.folder === "thumbnail" ? body.folder : "";
+  const folder = body?.folder === "gallery" || body?.folder === "thumbnail" || body?.folder === "affiliate" ? body.folder : "";
+  // Affiliate product images are managed by admins only.
+  if (folder === "affiliate" && !isTemplateAdmin(user)) {
+    return Response.json({ error: "Only admins can upload affiliate product images." }, { status: 403 });
+  }
   const extension = typeof body?.extension === "string" ? body.extension.toLowerCase() : "";
   const index = Number(body?.index);
   const rawName = typeof body?.name === "string" ? body.name.replace(/\.[a-z0-9]+$/i, "") : "";

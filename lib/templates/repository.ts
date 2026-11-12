@@ -1,7 +1,8 @@
 import "server-only";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { ALL_TEMPLATE_CATEGORIES, DEFAULT_TEMPLATE_CATEGORIES, type PublishedTemplate, type TemplateCategory, type TemplateDifficulty, type TemplateListFilters } from "@/lib/templates/types";
+import type { AffiliateProductOption } from "@/lib/templates/affiliate";
+import { ALL_TEMPLATE_CATEGORIES, DEFAULT_TEMPLATE_CATEGORIES, type AffiliateProductLink, type PublishedTemplate, type TemplateCategory, type TemplateDifficulty, type TemplateListFilters } from "@/lib/templates/types";
 
 type TemplateRow = {
   id: string;
@@ -34,6 +35,10 @@ type TemplateRow = {
     supply: { id: string; name: string; icon: string | null };
   }>;
   template_specs?: Array<{ label: string; value: string; sort_order: number }>;
+  template_affiliate_products?: Array<{
+    sort_order: number;
+    affiliate_product: { id: string; name: string; short_name: string; image_path: string; affiliate_url: string; is_active: boolean } | null;
+  }>;
   tag_assignments?: Array<{ tag: { id: string; name: string; slug: string } }>;
 };
 
@@ -65,6 +70,7 @@ const templateRelations = `
   gallery_images:template_gallery_images(id, storage_path, alt_text, sort_order),
   template_supplies(quantity, notes, sort_order, supply:supplies(id, name, icon)),
   template_specs(label, value, sort_order),
+  template_affiliate_products(sort_order, affiliate_product:affiliate_products(id, name, short_name, image_path, affiliate_url, is_active)),
   tag_assignments:template_tag_assignments(tag:template_tags(id, name, slug))
 `;
 
@@ -103,6 +109,23 @@ export function publicMediaUrl(path: string | null) {
   return supabase.storage.from("template-media").getPublicUrl(path).data.publicUrl;
 }
 
+// Seeded products point at files in /public; uploaded ones live in the template-media bucket.
+export function affiliateImageUrl(path: string | null) {
+  if (!path) return null;
+  if (path.startsWith("/affiliate/")) return path;
+  return publicMediaUrl(path);
+}
+
+export function toAffiliateProductLink(product: { id: string; name: string; short_name: string; image_path: string; affiliate_url: string }): AffiliateProductLink {
+  return {
+    id: product.id,
+    name: product.name,
+    shortName: product.short_name,
+    imageUrl: affiliateImageUrl(product.image_path),
+    href: product.affiliate_url,
+  };
+}
+
 function mapTemplate(row: TemplateRow): PublishedTemplate {
   const category = [...(row.category_assignments ?? [])]
     .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order)[0]?.category ?? row.category;
@@ -136,6 +159,9 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     specs: [...(row.template_specs ?? [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((spec) => ({ label: spec.label, value: spec.value, sortOrder: spec.sort_order })),
+    affiliateProducts: [...(row.template_affiliate_products ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .flatMap(({ affiliate_product: product }) => (product?.is_active ? [toAffiliateProductLink(product)] : [])),
     tags: (row.tag_assignments ?? []).map(({ tag }) => tag.name).sort((a, b) => a.localeCompare(b)),
   };
 }
@@ -351,4 +377,17 @@ export async function getPublishedTemplateById(id: string) {
   if (error) ({ data, error } = await execute(legacyTemplateSelectionWithoutAge));
   if (error) throw new Error(`Unable to load template: ${error.message}`);
   return data ? mapTemplate(data as unknown as TemplateRow) : null;
+}
+
+// Active affiliate products that template authors can pick from.
+export async function listActiveAffiliateProducts(): Promise<AffiliateProductOption[]> {
+  // (type comes from ./affiliate)
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("affiliate_products")
+    .select("id, name, short_name, image_path")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+  if (error) throw new Error(`Unable to load affiliate products: ${error.message}`);
+  return (data ?? []).map((row) => ({ id: row.id, name: row.name, shortName: row.short_name, imageUrl: affiliateImageUrl(row.image_path) }));
 }

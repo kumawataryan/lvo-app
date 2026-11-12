@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
+import { listActiveAffiliateProducts } from "@/lib/templates/repository";
 import { AddTemplateForm } from "./add-template-form";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +14,14 @@ export default async function AddTemplatePage() {
   if (!user) redirect("/login");
   if (!canUserAddTemplates(user)) redirect("/");
 
-  const [{ data: categories }, purchase] = await Promise.all([
+  const [{ data: categories }, purchase, affiliateOptions] = await Promise.all([
     supabase
       .from("template_categories")
       .select("id, name, parent_id")
       .eq("is_active", true)
       .order("sort_order"),
     getActivePurchase(supabase, user.id).catch(() => null),
+    listActiveAffiliateProducts().catch(() => []),
   ]);
 
   return <AddTemplateForm
@@ -29,5 +31,6 @@ export default async function AddTemplatePage() {
       parentId: category.parent_id,
     }))}
     subscribed={Boolean(purchase)}
+    affiliateOptions={affiliateOptions}
   />;
 }

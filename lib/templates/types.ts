@@ -38,6 +38,14 @@ export type TemplateSupply = {
   sortOrder: number;
 };
 
+export type AffiliateProductLink = {
+  id: string;
+  name: string;
+  shortName: string;
+  imageUrl: string | null;
+  href: string;
+};
+
 export type TemplateSpec = {
   label: string;
   value: string;
@@ -66,6 +74,7 @@ export type PublishedTemplate = {
   galleryImages: TemplateGalleryImage[];
   supplies: TemplateSupply[];
   specs: TemplateSpec[];
+  affiliateProducts: AffiliateProductLink[];
   tags: string[];
 };
 

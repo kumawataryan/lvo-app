@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { canManageTemplate, canUserAddTemplates } from "@/lib/auth/permissions";
 import { getActivePurchase } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { publicMediaUrl } from "@/lib/templates/repository";
+import { listActiveAffiliateProducts, publicMediaUrl } from "@/lib/templates/repository";
 import { AddTemplateForm, type InitialTemplateData } from "@/app/templates/new/add-template-form";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,7 @@ type EditTemplateRow = {
   gallery_images: Array<{ storage_path: string; sort_order: number }>;
   template_supplies: Array<{ sort_order: number; supply: { name: string } | null }>;
   template_specs: Array<{ label: string; value: string; sort_order: number }>;
+  template_affiliate_products: Array<{ sort_order: number; affiliate_product_id: string }>;
   tag_assignments: Array<{ tag: { name: string } | null }>;
 };
 
@@ -40,7 +41,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
 
   const supabase = createSupabaseServiceRoleClient();
 
-  const [{ data: templateRow }, { data: categories }, purchase] = await Promise.all([
+  const [{ data: templateRow }, { data: categories }, purchase, affiliateOptions] = await Promise.all([
     supabase
       .from("templates")
       .select(`
@@ -50,12 +51,14 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
         gallery_images:template_gallery_images(storage_path, sort_order),
         template_supplies(sort_order, supply:supplies(name)),
         template_specs(label, value, sort_order),
+        template_affiliate_products(sort_order, affiliate_product_id),
         tag_assignments:template_tag_assignments(tag:template_tags(name))
       `)
       .eq("id", templateId)
       .maybeSingle(),
     supabase.from("template_categories").select("id, name, parent_id").eq("is_active", true).order("sort_order"),
     getActivePurchase(authClient, user.id).catch(() => null),
+    listActiveAffiliateProducts().catch(() => []),
   ]);
 
   const template = templateRow as unknown as EditTemplateRow | null;
@@ -89,6 +92,9 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     specs: [...(template.template_specs ?? [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((spec) => ({ label: spec.label, value: spec.value })),
+    affiliateProductIds: [...(template.template_affiliate_products ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((link) => link.affiliate_product_id),
     tags: (template.tag_assignments ?? []).flatMap((assignment) => (assignment.tag ? [assignment.tag.name] : [])),
     printablePath: template.printable_path ?? "",
     images: orderedImagePaths.flatMap((path) => {
@@ -101,6 +107,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     <AddTemplateForm
       categories={(categories ?? []).map((category) => ({ id: category.id, name: category.name, parentId: category.parent_id }))}
       subscribed={Boolean(purchase)}
+      affiliateOptions={affiliateOptions}
       initialData={initialData}
     />
   );

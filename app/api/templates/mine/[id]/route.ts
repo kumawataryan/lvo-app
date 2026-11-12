@@ -5,6 +5,7 @@ import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from 
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { slugify } from "@/lib/templates/slug";
 import { parseTemplateSpecs } from "@/lib/templates/specs";
+import { parseAffiliateProductIds } from "@/lib/templates/affiliate";
 
 type UpdateTemplateBody = {
   title?: unknown;
@@ -23,6 +24,7 @@ type UpdateTemplateBody = {
   galleryPaths?: unknown;
   supplies?: unknown;
   specs?: unknown;
+  affiliateProductIds?: unknown;
   tags?: unknown;
 };
 
@@ -77,6 +79,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     ? [...new Set(body.supplies.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 20)
     : [];
   const specs = parseTemplateSpecs(body.specs);
+  const affiliateProductIds = parseAffiliateProductIds(body.affiliateProductIds);
   const tags = Array.isArray(body.tags)
     ? [...new Set(body.tags.filter((item): item is string => typeof item === "string").map((item) => item.trim().toLowerCase()).filter(Boolean))].slice(0, 20)
     : [];
@@ -180,6 +183,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           const { error } = await supabase.from("template_supplies").insert(links);
           if (error) throw error;
         }
+      }
+      })(),
+      (async () => {
+      const { error: deleteAffiliateError } = await supabase.from("template_affiliate_products").delete().eq("template_id", templateId);
+      if (deleteAffiliateError) throw deleteAffiliateError;
+      if (affiliateProductIds.length) {
+        const { error } = await supabase.from("template_affiliate_products").insert(
+          affiliateProductIds.map((affiliateProductId, index) => ({ template_id: templateId, affiliate_product_id: affiliateProductId, sort_order: (index + 1) * 10 })),
+        );
+        if (error) throw error;
       }
       })(),
       (async () => {
