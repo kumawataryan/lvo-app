@@ -13,6 +13,8 @@ type UpdateTemplateBody = {
   slug?: unknown;
   status?: unknown;
   description?: unknown;
+  metaTitle?: unknown;
+  metaDescription?: unknown;
   categoryIds?: unknown;
   minimumAge?: unknown;
   maximumAge?: unknown;
@@ -65,6 +67,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const nextSlug = requestedSlug || existing.slug;
   const nextStatus = body.status === "draft" || body.status === "published" ? body.status : existing.status;
   const description = typeof body.description === "string" ? body.description.trim() : "";
+  const metaTitle = typeof body.metaTitle === "string" ? body.metaTitle.trim() : "";
+  const metaDescription = typeof body.metaDescription === "string" ? body.metaDescription.trim() : "";
+  if (metaTitle.length > 70) return Response.json({ error: "Keep the meta title under 70 characters." }, { status: 400 });
+  if (metaDescription.length > 180) return Response.json({ error: "Keep the meta description under 180 characters." }, { status: 400 });
   const categoryIds = Array.isArray(body.categoryIds)
     ? [...new Set(body.categoryIds.filter((id): id is string => typeof id === "string"))].slice(0, 20)
     : [];
@@ -121,6 +127,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // Keep the first publish time so re-publishing or drafting doesn't reshuffle the template's date.
     published_at: nextStatus === "published" ? (existing.published_at ?? new Date().toISOString()) : existing.published_at,
     short_description: description,
+    meta_title: metaTitle || null,
+    meta_description: metaDescription || null,
     duration_minutes: durationMinutes,
     difficulty,
     minimum_age: minimumAge,

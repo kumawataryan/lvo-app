@@ -57,6 +57,8 @@ export type PublishedTemplate = {
   slug: string;
   title: string;
   shortDescription: string;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
   durationMinutes: number;
   downloadCount: number;
   badge?: string | null;

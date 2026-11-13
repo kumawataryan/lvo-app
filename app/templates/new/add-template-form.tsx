@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { Check, ChevronDown, FileText, Link2, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, FileText, Link2, LoaderCircle, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl, videoEmbedPreviewSrc } from "@/lib/templates/video-embed";
@@ -15,11 +15,16 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/compone
 import { TemplateTopBar, tabRoute } from "@/components/craft-app";
 import { ImportTemplatesPanel } from "./import-templates-panel";
 import { ImageReorderField, type TemplateImage } from "./image-reorder-field";
+import { useAiFill, type AiWrite } from "./ai-draft-panel";
+import type { AiDraftField, AiDraftSuggestion } from "@/lib/templates/ai-draft";
+import { FilenameCopy, VimeoCopy } from "./vimeo-copy";
 
 type Category = { id: string; name: string; parentId: string | null };
 type UploadRecord = { path: string };
 
 export type InitialTemplateData = {
+  metaTitle: string;
+  metaDescription: string;
   id: string;
   title: string;
   slug: string;
@@ -80,6 +85,9 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
   const [slug, setSlug] = useState(initialData?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(Boolean(initialData));
   const [description, setDescription] = useState(initialData?.description ?? "");
+  const [metaTitle, setMetaTitle] = useState(initialData?.metaTitle ?? "");
+  const [metaDescription, setMetaDescription] = useState(initialData?.metaDescription ?? "");
+  const [seoOpen, setSeoOpen] = useState(Boolean(initialData?.metaTitle || initialData?.metaDescription));
   const [categoryIds, setCategoryIds] = useState<string[]>(initialData?.categoryIds ?? []);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [openCategoryId, setOpenCategoryId] = useState(categories.find((category) => !category.parentId)?.id ?? "");
@@ -169,6 +177,38 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
 
   const hasPrintable = Boolean(printable) || Boolean(existingPrintablePath);
 
+  // Writes AI suggestions into the form. onlyEmpty (auto-draft) never overwrites what the author already typed.
+  // The AI agent writes one field at a time, so the form shows which field is being filled.
+  const [aiField, setAiField] = useState<AiDraftField | null>(null);
+  const [aiSuggestion, setAiSuggestion] = useState<AiDraftSuggestion | null>(null);
+  const writeAi = (update: AiWrite) => {
+    if (update.description !== undefined) setDescription(update.description);
+    if (update.metaTitle !== undefined) setMetaTitle(update.metaTitle);
+    if (update.metaDescription !== undefined) setMetaDescription(update.metaDescription);
+    // Open the SEO section while the AI writes into it, so the author sees the text arrive.
+    if (update.field === "meta") setSeoOpen(true);
+    if (update.supplies !== undefined) setSupplies(update.supplies);
+    if (update.tags !== undefined) setTags(update.tags);
+    if (update.durationMinutes !== undefined) setDuration(String(update.durationMinutes));
+    if (update.difficulty !== undefined) setDifficulty(update.difficulty);
+    setAiField(update.field);
+  };
+
+  const ai = useAiFill({
+    context: {
+      title,
+      categoryNames: categories.filter((category) => categoryIds.includes(category.id)).map((category) => category.name),
+      minimumAge: Number(minimumAge),
+      maximumAge: Number(maximumAge),
+      difficulty: difficulty as "easy" | "medium" | "advanced",
+      durationMinutes: Number(duration) || 15,
+    },
+    images,
+    onWrite: writeAi,
+    onPickTitle: (next) => { setTitle(next); if (!slugTouched) setSlug(slugify(next)); setError(""); },
+    onSuggestion: setAiSuggestion,
+  });
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid) return;
@@ -240,6 +280,8 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
           slug: slug.trim(),
           status: asDraft ? "draft" : "published",
           description: description.trim(),
+          metaTitle: metaTitle.trim(),
+          metaDescription: metaDescription.trim(),
           categoryIds,
           minimumAge: Number(minimumAge),
           maximumAge: Number(maximumAge),
@@ -358,7 +400,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
                     ? VIDEO_LINK_ERROR
                     : images.length
                       ? "Optional · youtube.com/shorts/…, youtu.be/… or vimeo.com/…"
-                      : "youtube.com/shorts/…, youtu.be/… or vimeo.com/… — or add a featured image below"}
+                      : "youtube.com/shorts/…, youtu.be/… or vimeo.com/…"}
                 </p>
               </div>
               {videoLinkEmbed ? (
@@ -375,9 +417,17 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
             </div>
           </Field>
 
-          <Field label="Title">
+          {aiSuggestion ? <VimeoCopy suggestion={aiSuggestion} title={title} slug={slug} /> : null}
+
+          <div className="block">
+            <div className="mb-2 flex h-8 items-center justify-between gap-3">
+              <span className="text-sm font-medium">Title</span>
+              {editing ? null : ai.trigger}
+            </div>
             <input required maxLength={120} autoFocus value={title} onChange={(event) => { setTitle(event.target.value); if (!slugTouched) setSlug(slugify(event.target.value)); }} placeholder="Paper flower bouquet" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
-          </Field>
+            {editing ? null : ai.results}
+          </div>
+
 
           <Field label="Slug" optional>
             <input
@@ -397,7 +447,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
             </div>
           </Field>
 
-          <Field label="Short description" optional>
+          <Field label="Short description" optional aiActive={aiField === "description"}>
             <textarea maxLength={280} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A simple activity with clear steps." className="w-full resize-none rounded-xl bg-[#f2f2f2] px-4 py-3 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
           </Field>
 
@@ -442,10 +492,10 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">
-            <Field label="Time in minutes">
+            <Field label="Time in minutes" aiActive={aiField === "time"}>
               <input required type="number" min={1} max={1440} inputMode="numeric" value={duration} onChange={(event) => setDuration(event.target.value)} className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition focus:ring-2" />
             </Field>
-            <Field label="Difficulty">
+            <Field label="Difficulty" aiActive={aiField === "time"}>
               <div className="relative">
                 <select value={difficulty} onChange={(event) => setDifficulty(event.target.value)} className="h-12 w-full appearance-none rounded-xl bg-[#f2f2f2] py-0 pl-4 pr-10 text-sm outline-none ring-black/10 transition focus:ring-2">
                   <option value="easy">Easy</option>
@@ -457,7 +507,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
             </Field>
           </div>
 
-          <Field label="Supplies (comma separated)" optional>
+          <Field label="Supplies (comma separated)" optional aiActive={aiField === "supplies"}>
             <input value={supplies} onChange={(event) => setSupplies(event.target.value)} placeholder="Paper, scissors, glue" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
           </Field>
 
@@ -574,7 +624,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
             </div>
           </Field>
 
-          <Field label="Tags" optional>
+          <Field label="Tags" optional aiActive={aiField === "tags"}>
             <div className="flex min-h-12 flex-wrap items-center gap-2 rounded-xl bg-[#f2f2f2] px-3 py-2 ring-black/10 transition focus-within:ring-2">
               {tags.map((tag) => (
                 <span key={tag} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand px-2.5 text-xs font-medium text-white">
@@ -619,6 +669,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
           <Field label="Images" optional={videoReady}>
             <ImageReorderField images={images} onChange={setImages} onError={setError} maxImages={MAX_IMAGES} />
           </Field>
+          {aiSuggestion ? <FilenameCopy names={aiSuggestion.filenameIdeas} /> : null}
 
           <Field label="Printable">
             <FilePicker
@@ -631,6 +682,26 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
               onChange={selectPrintable}
             />
           </Field>
+        </div>
+
+        <div className="mt-6">
+          <button type="button" aria-expanded={seoOpen} onClick={() => setSeoOpen((open) => !open)} className="flex h-12 w-full items-center justify-between rounded-xl bg-[#f2f2f2] px-4 text-left text-sm font-medium transition active:scale-[0.99]">
+            <span>More options · SEO</span>
+            <ChevronDown aria-hidden="true" className={`h-4 w-4 text-black/60 transition ${seoOpen ? "rotate-180" : ""}`} strokeWidth={2.25} />
+          </button>
+          {seoOpen ? (
+            <div className="mt-5 space-y-5">
+              <Field label="Meta title" optional aiActive={aiField === "meta"}>
+                <input maxLength={70} value={metaTitle} onChange={(event) => setMetaTitle(event.target.value)} placeholder={title || "Paper flower bouquet"} className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+                <span className="mt-1.5 block text-right text-[11px] tabular-nums text-black/35">{metaTitle.length}/70</span>
+              </Field>
+              <Field label="Meta description" optional aiActive={aiField === "meta"}>
+                <textarea maxLength={180} rows={3} value={metaDescription} onChange={(event) => setMetaDescription(event.target.value)} placeholder="What a parent will make, and what they need." className="w-full resize-none rounded-xl bg-[#f2f2f2] px-4 py-3 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+                <span className="mt-1.5 block text-right text-[11px] tabular-nums text-black/35">{metaDescription.length}/180</span>
+              </Field>
+              <p className="text-xs text-black/40">Shown in search results and link previews. Leave empty to use the title and short description.</p>
+            </div>
+          ) : null}
         </div>
 
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
@@ -703,13 +774,18 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
   );
 }
 
-function Field({ label, optional = false, children }: { label: string; optional?: boolean; children: ReactNode }) {
+function Field({ label, optional = false, aiActive = false, children }: { label: string; optional?: boolean; aiActive?: boolean; children: ReactNode }) {
   return (
     <div className="block">
-      <span className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+      <span className="mb-2 flex h-5 items-center gap-1.5 text-sm font-medium">
         {label}{optional ? <span className="text-xs font-normal text-black/35">Optional</span> : null}
+        {aiActive ? <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-black/60 animate-in fade-in duration-200"><Sparkles aria-hidden="true" className="h-3.5 w-3.5 animate-pulse" />AI writing</span> : null}
       </span>
-      {children}
+      {/* The glow is an overlay, so it never shifts the layout while the AI types. */}
+      <div className="relative">
+        {children}
+        {aiActive ? <span aria-hidden="true" className="pointer-events-none absolute -inset-[3px] rounded-[14px] ring-2 ring-black/15 animate-in fade-in duration-200" /> : null}
+      </div>
     </div>
   );
 }

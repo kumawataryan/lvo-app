@@ -14,6 +14,8 @@ type EditTemplateRow = {
   slug: string;
   status: string;
   short_description: string | null;
+  meta_title: string | null;
+  meta_description: string | null;
   minimum_age: number | null;
   maximum_age: number | null;
   duration_minutes: number;
@@ -46,7 +48,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     supabase
       .from("templates")
       .select(`
-        id, title, slug, status, short_description, minimum_age, maximum_age, duration_minutes, difficulty,
+        id, title, slug, status, short_description, meta_title, meta_description, minimum_age, maximum_age, duration_minutes, difficulty,
         video_embed_url, printable_path, thumbnail_path, is_free, created_by,
         category_assignments:template_category_assignments(category_id, is_primary, sort_order),
         gallery_images:template_gallery_images(storage_path, sort_order),
@@ -79,6 +81,8 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     slug: template.slug,
     status: template.status,
     description: template.short_description ?? "",
+    metaTitle: template.meta_title ?? "",
+    metaDescription: template.meta_description ?? "",
     categoryIds: [...(template.category_assignments ?? [])]
       .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order)
       .map((assignment) => assignment.category_id),

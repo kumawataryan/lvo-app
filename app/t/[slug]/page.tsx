@@ -22,8 +22,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!content) return { robots: { index: false, follow: false } };
 
   const { template } = content;
-  const title = `${template.title} | ${SITE_NAME}`;
-  const description = template.shortDescription || `${template.title}: a ${template.category.name.toLowerCase()} template with clear, easy steps.`;
+  // Meta fields win when the author wrote them; otherwise fall back to the title and short description.
+  const title = template.metaTitle || `${template.title} | ${SITE_NAME}`;
+  const description = template.metaDescription || template.shortDescription || `${template.title}: a ${template.category.name.toLowerCase()} template with clear, easy steps.`;
   const url = SITE_URL ? `${SITE_URL}/t/${template.slug}` : undefined;
   const image = template.thumbnailUrl?.startsWith("http") ? template.thumbnailUrl : undefined;
 

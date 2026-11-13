@@ -11,6 +11,8 @@ type TemplateRow = {
   slug: string;
   title: string;
   short_description: string;
+  meta_title?: string | null;
+  meta_description?: string | null;
   duration_minutes: number;
   download_count?: number | null;
   minimum_age?: number | null;
@@ -53,6 +55,8 @@ const templateBaseFields = `
   slug,
   title,
   short_description,
+  meta_title,
+  meta_description,
   duration_minutes,
   difficulty,
   download_count,
@@ -142,6 +146,8 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     slug: row.slug,
     title: row.title,
     shortDescription: row.short_description,
+    metaTitle: row.meta_title ?? null,
+    metaDescription: row.meta_description ?? null,
     durationMinutes: row.duration_minutes,
     downloadCount: row.download_count ?? 0,
     minimumAge: row.minimum_age ?? null,
