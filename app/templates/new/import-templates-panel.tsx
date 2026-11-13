@@ -64,7 +64,7 @@ function resolveRow(index: number, raw: CsvRecord, categories: Category[], fileM
   const description = (raw.description ?? "").trim();
 
   if (!title || title.length > 120) errors.push("Title is required and must be 120 characters or fewer.");
-  if (description.length > 280) errors.push("Description must be 280 characters or fewer.");
+  if (description.length > 400) errors.push("Description must be 400 characters or fewer.");
 
   const categoryNames = splitList(raw.categories ?? "");
   const categoryIds: string[] = [];

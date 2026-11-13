@@ -81,7 +81,7 @@ export async function POST(request: Request) {
 
   if (!title || title.length > 120) return Response.json({ error: "Add a title under 120 characters." }, { status: 400 });
   if (typeof body.slug === "string" && body.slug.trim() && !requestedSlug) return Response.json({ error: "Enter a slug with letters or numbers." }, { status: 400 });
-  if (description.length > 280) return Response.json({ error: "Keep the description under 280 characters." }, { status: 400 });
+  if (description.length > 400) return Response.json({ error: "Keep the description under 400 characters." }, { status: 400 });
   if (metaTitle.length > 70) return Response.json({ error: "Keep the meta title under 70 characters." }, { status: 400 });
   if (metaDescription.length > 180) return Response.json({ error: "Keep the meta description under 180 characters." }, { status: 400 });
   if (!categoryIds.length || categoryIds.some((id) => !UUID_PATTERN.test(id))) return Response.json({ error: "Choose at least one category." }, { status: 400 });

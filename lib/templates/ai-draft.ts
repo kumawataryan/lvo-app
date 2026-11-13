@@ -219,7 +219,7 @@ export function parseAiDraft(raw: string, fallback: { title: string; durationMin
   const data = extractJsonObject(raw);
   if (!data) return null;
 
-  const description = cleanText(data.description, 280);
+  const description = cleanText(data.description, 400);
   if (!description) return null;
 
   const duration = Number(data.durationMinutes);

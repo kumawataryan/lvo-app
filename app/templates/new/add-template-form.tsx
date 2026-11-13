@@ -381,7 +381,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
 
         {!editing && mode === "import" ? <ImportTemplatesPanel categories={categories} /> : (
         <form onSubmit={submit} className="contents">
-        <div className="mt-7 space-y-5">
+        <div className="mt-7 space-y-8">
           <Field label="Video" optional={Boolean(images.length)}>
             <div className="flex gap-3">
               <div className="min-w-0 flex-1">
@@ -422,10 +422,10 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
           <div className="block">
             <div className="mb-2 flex h-8 items-center justify-between gap-3">
               <span className="text-sm font-medium">Title</span>
-              {editing ? null : ai.trigger}
+              {ai.trigger}
             </div>
             <input required maxLength={120} autoFocus value={title} onChange={(event) => { setTitle(event.target.value); if (!slugTouched) setSlug(slugify(event.target.value)); }} placeholder="Paper flower bouquet" className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
-            {editing ? null : ai.results}
+            {ai.results}
           </div>
 
 
@@ -436,19 +436,17 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
               onChange={(event) => { setSlug(event.target.value); setSlugTouched(true); setError(""); }}
               onBlur={() => setSlug((current) => slugify(current))}
               placeholder="paper-flower-bouquet"
-              aria-describedby="slug-hint"
               className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 font-mono text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2"
             />
-            <div id="slug-hint" className="mt-1.5 flex items-center justify-between gap-3 text-xs text-black/35">
-              <span>Lowercase letters, numbers and hyphens. Used for the template&apos;s download link.</span>
-              {slugTouched && slug !== slugify(title) ? (
+            {slugTouched && slug !== slugify(title) ? (
+              <div className="mt-1.5 flex justify-end text-xs text-black/35">
                 <button type="button" onClick={() => { setSlug(slugify(title)); setSlugTouched(false); }} className="shrink-0 font-semibold text-black/55 underline-offset-2 hover:underline">Reset</button>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </Field>
 
-          <Field label="Short description" optional aiActive={aiField === "description"}>
-            <textarea maxLength={280} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A simple activity with clear steps." className="w-full resize-none rounded-xl bg-[#f2f2f2] px-4 py-3 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
+          <Field label="Description" optional aiActive={aiField === "description"}>
+            <textarea maxLength={400} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A simple activity with clear steps." className="w-full resize-none rounded-xl bg-[#f2f2f2] px-4 py-3 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
           </Field>
 
           <Field label="Categories">
@@ -690,7 +688,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
             <ChevronDown aria-hidden="true" className={`h-4 w-4 text-black/60 transition ${seoOpen ? "rotate-180" : ""}`} strokeWidth={2.25} />
           </button>
           {seoOpen ? (
-            <div className="mt-5 space-y-5">
+            <div className="mt-5 space-y-8">
               <Field label="Meta title" optional aiActive={aiField === "meta"}>
                 <input maxLength={70} value={metaTitle} onChange={(event) => setMetaTitle(event.target.value)} placeholder={title || "Paper flower bouquet"} className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2" />
                 <span className="mt-1.5 block text-right text-[11px] tabular-nums text-black/35">{metaTitle.length}/70</span>
@@ -706,8 +704,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
 
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
-        <p className="mt-7 text-xs text-black/40">Drafts are saved to your manage list and stay hidden from the site until you publish them.</p>
-        <div className="mt-3 flex gap-3">
+        <div className="mt-7 flex gap-3">
           <button type="submit" value="draft" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="flex h-13 flex-1 items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black transition active:scale-[0.99] disabled:text-black/30">
             Save as draft
           </button>
