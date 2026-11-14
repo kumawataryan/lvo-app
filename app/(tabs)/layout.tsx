@@ -22,19 +22,23 @@ export default async function TabsLayout({ children }: { children: ReactNode }) 
   const userPromise = getSessionUser(supabase);
   const purchasePromise = userPromise.then((user) => (user ? getActivePurchase(supabase, user.id).catch(() => null) : null));
   const onboardingPromise = userPromise.then((user) => (user ? getFamilyOnboarding(supabase, user.id).catch(() => null) : undefined));
-  const [initialTemplates, initialCategories, user, purchase, onboarding] = await Promise.all([
+  // Access comes from a paid plan or an active free-month trial, so these checks join the same batch.
+  const accessPromise = userPromise.then((user) => (user ? hasActiveSubscription(supabase, user.id).catch(() => false) : false));
+  const trialPromise = userPromise.then((user) => (user ? isTrialOfferEligible(user.id).catch(() => false) : false));
+  const headersPromise = headers();
+  const [initialTemplates, initialCategories, user, purchase, onboarding, hasAccess, trialOffer, headerStore] = await Promise.all([
     getCachedTemplates(),
     getCachedCategories(),
     userPromise,
     purchasePromise,
     onboardingPromise,
+    accessPromise,
+    trialPromise,
+    headersPromise,
   ]);
-  // Access comes from a paid plan or an active free-month trial.
-  const hasAccess = user ? await hasActiveSubscription(supabase, user.id).catch(() => false) : false;
   const subscribed = Boolean(purchase) || hasAccess;
-  const trialOffer = user ? await isTrialOfferEligible(user.id).catch(() => false) : false;
   // Rupees for India (and when the country is unknown); dollars elsewhere. Vercel sets this header on each request.
-  const country = (await headers()).get("x-vercel-ip-country");
+  const country = headerStore.get("x-vercel-ip-country");
   const currency: "INR" | "USD" = country && country !== "IN" ? "USD" : "INR";
 
   let parentName = "";

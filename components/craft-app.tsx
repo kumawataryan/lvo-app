@@ -2946,7 +2946,24 @@ function DetailVideoPlayer({ template, active, mobileOverlay }: { template: Temp
       style={frameRatio ? { aspectRatio: String(frameRatio) } : undefined}
     >
       {embed ? (
-        <div ref={youtubeContainerRef} className="absolute inset-0 h-full w-full overflow-hidden" />
+        <>
+          {/* The feature image stays visible until the embed is actually playing, so nothing is blank while it loads. */}
+          {previewImage ? (
+            <Image
+              src={previewImage}
+              alt=""
+              fill
+              sizes="(min-width: 1024px) 600px, 100vw"
+              className="object-contain"
+              priority
+            />
+          ) : null}
+          <div
+            ref={youtubeContainerRef}
+            className="absolute inset-0 h-full w-full overflow-hidden transition-opacity duration-300"
+            style={{ opacity: previewImage && !youtube.playing ? 0 : 1 }}
+          />
+        </>
       ) : videoSrc ? (
         <video
           ref={videoRef}
@@ -3117,7 +3134,9 @@ function ReelMedia({ template, eager = false, hovered = false }: { template: Tem
       if (embed) return;
       if (entry.isIntersecting) videoRef.current?.play().catch(() => undefined);
       else videoRef.current?.pause();
-    }, { rootMargin: "240px 0px", threshold: 0.01 });
+    // Vimeo mounts a full player iframe per card, so only start it once the card is really on screen;
+    // YouTube and direct video keep the 240px prefetch margin so they start a little early.
+    }, { rootMargin: embed?.provider === "vimeo" ? "0px" : "240px 0px", threshold: 0.01 });
 
     observer.observe(target);
     return () => observer.disconnect();

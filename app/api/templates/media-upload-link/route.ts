@@ -39,12 +39,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid gallery position." }, { status: 400 });
   }
 
-  const slug = slugifyFilename(rawName) || (folder === "gallery" ? `gallery-${index + 1}` : "thumbnail");
-  const filename = `${slug}.${extension}`;
+  // Position is part of the name, so two images with the same original filename (e.g. "photo.jpg" twice,
+  // or a featured image and a gallery image) never map to the same object path in one upload group.
+  const baseName = slugifyFilename(rawName) || "image";
+  const filename = folder === "gallery"
+    ? `gallery-${index + 1}-${baseName}.${extension}`
+    : `thumbnail-${baseName}.${extension}`;
   const path = `${user.id}/${uploadGroup}/${filename}`;
   try {
     const serviceClient = createSupabaseServiceRoleClient();
-    const { data, error } = await serviceClient.storage.from("template-media").createSignedUploadUrl(path);
+    // upsert: a retried upload to the same path replaces its own partial file instead of failing with "already exists".
+    const { data, error } = await serviceClient.storage.from("template-media").createSignedUploadUrl(path, { upsert: true });
     if (error || !data) throw error ?? new Error("Unable to prepare Supabase upload.");
     return Response.json({ path, token: data.token });
   } catch (error) {

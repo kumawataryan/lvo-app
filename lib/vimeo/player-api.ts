@@ -36,8 +36,28 @@ export function loadVimeoPlayerApi(): Promise<VimeoNamespace> {
   apiPromise = new Promise((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT_SRC}"]`);
     const script = existing ?? document.createElement("script");
-    script.addEventListener("load", () => resolve(window.Vimeo!));
-    script.addEventListener("error", () => { apiPromise = null; reject(new Error("Unable to load the Vimeo Player API.")); });
+    let settled = false;
+    // A failed or stalled load must not leave every later Vimeo card waiting forever: drop the tag and let the next mount retry.
+    const fail = (message: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      apiPromise = null;
+      script.remove();
+      reject(new Error(message));
+    };
+    const timeout = setTimeout(() => fail("Timed out loading the Vimeo Player API."), 15_000);
+    script.addEventListener("load", () => {
+      if (settled) return;
+      if (window.Vimeo?.Player) {
+        settled = true;
+        clearTimeout(timeout);
+        resolve(window.Vimeo);
+      } else {
+        fail("The Vimeo Player API did not initialise.");
+      }
+    });
+    script.addEventListener("error", () => fail("Unable to load the Vimeo Player API."));
     if (!existing) {
       script.src = SCRIPT_SRC;
       document.head.appendChild(script);

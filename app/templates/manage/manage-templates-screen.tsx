@@ -39,6 +39,8 @@ export function ManageTemplatesScreen({ initialTemplates, initialHasMore, pageSi
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(false);
+  // The template being opened for editing; it stays marked until the edit page replaces this screen.
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const lastFetchedQuery = useRef(`|all`);
@@ -130,8 +132,10 @@ export function ManageTemplatesScreen({ initialTemplates, initialHasMore, pageSi
                 <button
                   key={template.id}
                   type="button"
-                  onClick={() => router.push(`/templates/${template.id}/edit`)}
-                  className="flex w-full items-center gap-3 rounded-2xl bg-[#f2f2f2] p-3 text-left transition active:scale-[0.98]"
+                  disabled={openingId !== null}
+                  aria-busy={openingId === template.id}
+                  onClick={() => { setOpeningId(template.id); router.push(`/templates/${template.id}/edit`); }}
+                  className={`flex w-full items-center gap-3 rounded-2xl bg-[#f2f2f2] p-3 text-left transition active:scale-[0.98] disabled:cursor-progress ${openingId && openingId !== template.id ? "opacity-60" : ""}`}
                 >
                   <span className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-white">
                     {template.thumbnailUrl ? (
@@ -146,7 +150,9 @@ export function ManageTemplatesScreen({ initialTemplates, initialHasMore, pageSi
                     </span>
                     <span className="mt-1 flex items-center gap-1 text-xs text-black/45"><Pencil className="h-3 w-3" />Edit</span>
                   </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-black/30" />
+                  {openingId === template.id
+                    ? <LoaderCircle aria-label="Opening template" className="h-4 w-4 shrink-0 animate-spin text-black/50" />
+                    : <ChevronRight className="h-4 w-4 shrink-0 text-black/30" />}
                 </button>
               ))}
             </div>

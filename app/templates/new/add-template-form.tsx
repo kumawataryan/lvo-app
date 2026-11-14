@@ -76,6 +76,29 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
   return results;
 }
 
+/** Reads a JSON body without throwing: an HTML error page or empty body becomes a readable error instead of "Unexpected token <". */
+async function readJsonResponse<T extends object>(response: Response): Promise<T & { error?: string }> {
+  const payload = await response.json().catch(() => null) as (T & { error?: string }) | null;
+  return payload ?? ({ error: `The server returned an unexpected response (${response.status}).` } as T & { error?: string });
+}
+
+/** Browser network failures (TypeError: "Failed to fetch") are retried a couple of times; HTTP errors are returned as-is. */
+async function withNetworkRetry<T>(task: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await task();
+    } catch (error) {
+      if (!(error instanceof TypeError) || attempt >= attempts) throw toUploadError(error);
+      await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
+    }
+  }
+}
+
+function toUploadError(error: unknown) {
+  if (error instanceof TypeError) return new Error("The connection dropped while uploading. Check your internet connection and try again.");
+  return error instanceof Error ? error : new Error("Upload failed. Please try again.");
+}
+
 export function AddTemplateForm({ categories, subscribed = false, initialData, affiliateOptions = [] }: { categories: Category[]; subscribed?: boolean; initialData?: InitialTemplateData; affiliateOptions?: AffiliateProductOption[] }) {
   const router = useRouter();
   const editing = Boolean(initialData);
@@ -224,20 +247,23 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
     const uploadedToSupabase: UploadRecord[] = [];
 
     const uploadToDropbox = async (file: File) => {
-      const linkResponse = await fetch("/api/dropbox/upload-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uploadGroup, folder: "printable", extension: fileExtension(file) }),
+      const linkResult = await withNetworkRetry(async () => {
+        const response = await fetch("/api/dropbox/upload-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uploadGroup, folder: "printable", extension: fileExtension(file) }),
+        });
+        const result = await readJsonResponse<{ path?: string; uploadUrl?: string }>(response);
+        if (!response.ok || !result.path || !result.uploadUrl) throw new Error(result.error || "Could not prepare file upload.");
+        return result as { path: string; uploadUrl: string };
       });
-      const linkResult = await linkResponse.json() as { path?: string; uploadUrl?: string; error?: string };
-      if (!linkResponse.ok || !linkResult.path || !linkResult.uploadUrl) throw new Error(linkResult.error || "Could not prepare file upload.");
 
-      const uploadResponse = await fetch(linkResult.uploadUrl, {
+      const uploadResponse = await withNetworkRetry(() => fetch(linkResult.uploadUrl, {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
         body: file,
-      });
-      if (!uploadResponse.ok) throw new Error(`Dropbox upload failed (${uploadResponse.status}).`);
+      }));
+      if (!uploadResponse.ok) throw new Error(`Printable upload failed (${uploadResponse.status}). Please try again.`);
       const path = linkResult.path;
       uploadedToDropbox.push({ path });
       return path;
@@ -245,17 +271,24 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
 
     const uploadToSupabase = async (folder: "gallery" | "thumbnail", file: File, index?: number) => {
       const optimizedFile = await optimizeImageToWebp(file);
-      const linkResponse = await fetch("/api/templates/media-upload-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uploadGroup, folder, extension: fileExtension(optimizedFile), name: optimizedFile.name, index }),
+      const linkResult = await withNetworkRetry(async () => {
+        const response = await fetch("/api/templates/media-upload-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uploadGroup, folder, extension: fileExtension(optimizedFile), name: optimizedFile.name, index }),
+        });
+        const result = await readJsonResponse<{ path?: string; token?: string }>(response);
+        if (!response.ok || !result.path || !result.token) throw new Error(result.error || "Could not prepare file upload.");
+        return result as { path: string; token: string };
       });
-      const linkResult = await linkResponse.json() as { path?: string; token?: string; error?: string };
-      if (!linkResponse.ok || !linkResult.path || !linkResult.token) throw new Error(linkResult.error || "Could not prepare file upload.");
 
       const supabase = createSupabaseBrowserClient();
-      const { error: uploadError } = await supabase.storage.from("template-media").uploadToSignedUrl(linkResult.path, linkResult.token, optimizedFile);
-      if (uploadError) throw new Error(uploadError.message || "Supabase upload failed.");
+      await withNetworkRetry(async () => {
+        const { error: uploadError } = await supabase.storage.from("template-media").uploadToSignedUrl(linkResult.path, linkResult.token, optimizedFile);
+        // The SDK reports network failures as storage errors, so surface them as TypeErrors to get the same retry.
+        if (uploadError && /fetch|network|load failed/i.test(uploadError.message)) throw new TypeError(uploadError.message);
+        if (uploadError) throw new Error(uploadError.message || "Image upload failed.");
+      });
       const path = linkResult.path;
       uploadedToSupabase.push({ path });
       return path;
@@ -299,7 +332,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
           tags: [...tags, ...tagInput.split(",").map((item) => item.trim()).filter(Boolean)],
         }),
       });
-      const result = await response.json() as { id?: string; slug?: string; error?: string };
+      const result = await readJsonResponse<{ id?: string; slug?: string }>(response);
       if (!response.ok || !result.id) throw new Error(result.error || (editing ? "Could not save changes." : "Could not publish this template."));
 
       if (editing && initialData) {
@@ -338,7 +371,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
           body: JSON.stringify({ paths: uploadedToSupabase.map(({ path }) => path) }),
         }).catch(() => undefined);
       }
-      setError(caughtError instanceof Error ? caughtError.message : "Could not add this template.");
+      setError(toUploadError(caughtError).message);
       setStatus("");
       setSubmitting(false);
     }
