@@ -5,6 +5,7 @@ import { GripVertical, Plus, X } from "lucide-react";
 import { DndContext, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { UploadStatus } from "./use-eager-uploads";
 
 export type TemplateImage =
   | { id: string; kind: "new"; file: File; previewUrl: string }
@@ -21,12 +22,13 @@ function imageFilename(path: string) {
   return path.split("/").pop() || path;
 }
 
-function SortableImageRow({ image, featured, onRemove }: { image: TemplateImage; featured: boolean; onRemove: () => void }) {
+function SortableImageRow({ image, featured, onRemove, upload }: { image: TemplateImage; featured: boolean; onRemove: () => void; upload?: UploadStatus }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: image.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const src = image.kind === "new" ? image.previewUrl : image.url;
   const title = image.kind === "new" ? image.file.name : imageFilename(image.path);
-  const subtitle = image.kind === "new" ? formatFileSize(image.file.size) : "Already uploaded";
+  const uploadLabel = !upload ? "" : upload.state === "uploading" ? " · Uploading…" : upload.state === "error" ? " · Upload failed, retries when you save" : " · Uploaded";
+  const subtitle = image.kind === "new" ? `${formatFileSize(image.file.size)}${uploadLabel}` : "Already uploaded";
 
   return (
     <div
@@ -72,11 +74,13 @@ export function ImageReorderField({
   onChange,
   onError,
   maxImages,
+  uploadStatuses = {},
 }: {
   images: TemplateImage[];
   onChange: (images: TemplateImage[]) => void;
   onError: (message: string) => void;
   maxImages: number;
+  uploadStatuses?: Record<string, UploadStatus>;
 }) {
   const objectUrls = useRef(new Set<string>());
 
@@ -131,7 +135,7 @@ export function ImageReorderField({
         <SortableContext items={images.map((image) => image.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
             {images.map((image, index) => (
-              <SortableImageRow key={image.id} image={image} featured={index === 0} onRemove={() => removeImage(image.id)} />
+              <SortableImageRow key={image.id} image={image} featured={index === 0} onRemove={() => removeImage(image.id)} upload={uploadStatuses[image.id]} />
             ))}
           </div>
         </SortableContext>

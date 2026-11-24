@@ -86,7 +86,8 @@ body {
   }
 }
 
-.mobile-nav button {
+.mobile-nav button,
+.mobile-nav a {
   pointer-events: auto;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -366,4 +367,31 @@ input {
   outline: 2px solid white;
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Top progress bar while a page change is in progress (components/route-progress.tsx). */
+.route-progress {
+  opacity: 0;
+  transition: opacity 250ms ease 150ms;
+}
+.route-progress-bar {
+  width: 100%;
+  transform: scaleX(1);
+  transform-origin: left;
+  transition: transform 200ms ease-out;
+}
+.route-progress-active {
+  opacity: 1;
+  transition: opacity 0ms;
+}
+.route-progress-active .route-progress-bar {
+  /* Rushes ahead quickly, then creeps, so it never looks finished before the page is. */
+  animation: route-progress-grow 8s cubic-bezier(0.08, 0.82, 0.17, 1) forwards;
+}
+@keyframes route-progress-grow {
+  from { transform: scaleX(0.05); }
+  to { transform: scaleX(0.92); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-progress-active .route-progress-bar { animation: none; transform: scaleX(0.6); }
 }

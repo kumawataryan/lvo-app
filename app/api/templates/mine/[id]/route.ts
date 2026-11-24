@@ -1,9 +1,12 @@
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
 import { canManageTemplate, canUserAddTemplates } from "@/lib/auth/permissions";
 import { deleteDropboxFile } from "@/lib/dropbox/server";
 import { createSupabaseAuthServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl } from "@/lib/templates/video-embed";
 import { slugify } from "@/lib/templates/slug";
+import { resolveTemplateSlug } from "@/lib/templates/slug-server";
+import { renamePrintableToSlug } from "@/lib/templates/printable-name";
 import { parseTemplateSpecs } from "@/lib/templates/specs";
 import { parseAffiliateProductIds } from "@/lib/templates/affiliate";
 import { parseSimilarTemplateIds } from "@/lib/templates/similar";
@@ -24,6 +27,7 @@ type UpdateTemplateBody = {
   thumbnailPath?: unknown;
   printablePath?: unknown;
   isFree?: unknown;
+  gender?: unknown;
   galleryPaths?: unknown;
   supplies?: unknown;
   specs?: unknown;
@@ -82,6 +86,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const thumbnailPath = typeof body.thumbnailPath === "string" ? body.thumbnailPath : "";
   const printablePath = typeof body.printablePath === "string" ? body.printablePath : "";
   const isFree = body.isFree === true;
+  const gender = body.gender === "boy" || body.gender === "girl" ? body.gender : null;
   const galleryPaths = Array.isArray(body.galleryPaths) ? body.galleryPaths.filter((path): path is string => typeof path === "string").slice(0, 30) : [];
   const supplies = Array.isArray(body.supplies)
     ? [...new Set(body.supplies.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 20)
@@ -111,13 +116,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!printablePath.startsWith(dropboxOwnedPrefix)) return Response.json({ error: "Upload a printable PDF." }, { status: 400 });
   if (galleryPaths.some((path) => !isOwnedMediaPath(path))) return Response.json({ error: "Invalid gallery file." }, { status: 400 });
 
-  const { data: validCategories, error: categoriesError } = await supabase
-    .from("template_categories")
-    .select("id")
-    .in("id", categoryIds)
-    .eq("is_active", true);
+  // Independent checks run together to keep saving fast.
+  const [{ data: validCategories, error: categoriesError }, slugCheck] = await Promise.all([
+    supabase.from("template_categories").select("id").in("id", categoryIds).eq("is_active", true),
+    nextSlug !== existing.slug ? resolveTemplateSlug(nextSlug, templateId).catch(() => null) : Promise.resolve(null),
+  ]);
   if (categoriesError || (validCategories ?? []).length !== categoryIds.length) {
     return Response.json({ error: "Choose valid categories." }, { status: 400 });
+  }
+  if (slugCheck && !slugCheck.available) {
+    return Response.json({ error: "That slug is already used by another template.", suggestion: slugCheck.suggestion }, { status: 409 });
   }
 
   const { error: updateError } = await supabase.from("templates").update({
@@ -136,9 +144,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     video_embed_url: videoUrl || null,
     printable_path: printablePath,
     is_free: isFree,
+    gender,
     thumbnail_path: thumbnailPath || galleryPaths[0] || null,
   }).eq("id", templateId);
-  if (updateError?.code === "23505") return Response.json({ error: "That slug is already used by another template." }, { status: 409 });
+  if (updateError?.code === "23505") {
+    const suggestion = await resolveTemplateSlug(nextSlug, templateId).then((result) => result.suggestion).catch(() => undefined);
+    return Response.json({ error: "That slug is already used by another template.", suggestion }, { status: 409 });
+  }
   if (updateError) return Response.json({ error: updateError.message }, { status: 400 });
 
   try {
@@ -175,14 +187,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const { error: deleteSuppliesError } = await supabase.from("template_supplies").delete().eq("template_id", templateId);
       if (deleteSuppliesError) throw deleteSuppliesError;
       if (supplies.length) {
-        const { data: existingSupplies, error: selectError } = await supabase.from("supplies").select("id, name").in("name", supplies);
-        if (selectError) throw selectError;
-        const existingNames = new Set((existingSupplies ?? []).map((item) => item.name));
-        const missing = supplies.filter((name) => !existingNames.has(name));
-        if (missing.length) {
-          const { error } = await supabase.from("supplies").insert(missing.map((name) => ({ name })));
-          if (error && error.code !== "23505") throw error;
-        }
+        // Insert any new supply names (existing ones are skipped), then read back all their ids.
+        const { error: upsertError } = await supabase.from("supplies").upsert(supplies.map((name) => ({ name })), { onConflict: "name", ignoreDuplicates: true });
+        if (upsertError) throw upsertError;
         const { data: allSupplies, error: suppliesError } = await supabase.from("supplies").select("id, name").in("name", supplies);
         if (suppliesError) throw suppliesError;
         const byName = new Map((allSupplies ?? []).map((item) => [item.name, item.id]));
@@ -247,7 +254,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   revalidateTag("templates", { expire: 0 });
-  return Response.json({ id: templateId }, { status: 200 });
+  // Keep the stored printable named after the slug (also renames older "printable.pdf" files) after responding.
+  after(() => renamePrintableToSlug(templateId, printablePath, nextSlug));
+  return Response.json({ id: templateId, slug: nextSlug }, { status: 200 });
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {

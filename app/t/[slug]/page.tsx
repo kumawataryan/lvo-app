@@ -4,7 +4,7 @@ import { permanentRedirect, redirect } from "next/navigation";
 import { TemplateDetailClient } from "@/app/templates/[slug]/template-detail-client";
 import { getSessionUser } from "@/lib/auth/session";
 import { canUserAddTemplates } from "@/lib/auth/permissions";
-import { getFamilyOnboarding } from "@/lib/onboarding/server";
+import { isOnboardingCompleted } from "@/lib/onboarding/server";
 import { hasActiveSubscription } from "@/lib/payments/repository";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
 import { getCachedTemplateContent, getCachedTemplateSlugById } from "@/lib/templates/cached";
@@ -58,16 +58,17 @@ export default async function TemplatePage({ params }: { params: Promise<{ slug:
   const accountPromise = (async () => {
     const supabase = await createSupabaseAuthServerClient();
     const user = await getSessionUser(supabase);
-    const [onboarding, subscribed] = await Promise.all([
-      user ? getFamilyOnboarding(supabase, user.id).catch(() => null) : null,
+    // Only the "is onboarding done" flag is needed here, not the whole family profile.
+    const [onboardingCompleted, subscribed] = await Promise.all([
+      user ? isOnboardingCompleted(supabase, user.id).catch(() => true) : true,
       user ? hasActiveSubscription(supabase, user.id).catch(() => false) : false,
     ]);
-    return { user, onboarding, subscribed };
+    return { user, onboardingCompleted, subscribed };
   })();
-  const [content, { user, onboarding, subscribed }] = await Promise.all([contentPromise, accountPromise]);
+  const [content, { user, onboardingCompleted, subscribed }] = await Promise.all([contentPromise, accountPromise]);
   // Drafted or deleted templates are no longer published, so visitors go back to the homepage.
   if (!content) redirect("/");
-  if (user && !onboarding?.completed) redirect("/onboarding");
+  if (user && !onboardingCompleted) redirect("/onboarding");
   const { template, related, categoryTrail } = content;
 
   return <TemplateDetailClient subscribed={subscribed} signedIn={Boolean(user)} canAddTemplates={canUserAddTemplates(user)} initialTemplate={template} initialRelated={related} categoryTrail={categoryTrail} />;

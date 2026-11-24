@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Check, ChevronDown, FileText, Link2, LoaderCircle, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { VIDEO_LINK_ERROR, parseVideoEmbedUrl, videoEmbedPreviewSrc } from "@/lib/templates/video-embed";
-import { optimizeImageToWebp } from "@/lib/templates/image-optimize";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { slugify } from "@/lib/templates/slug";
 import type { AffiliateProductOption } from "@/lib/templates/affiliate";
 import type { SimilarTemplateOption } from "@/lib/templates/similar";
@@ -18,9 +16,9 @@ import { ImageReorderField, type TemplateImage } from "./image-reorder-field";
 import { useAiFill, type AiWrite } from "./ai-draft-panel";
 import type { AiDraftField, AiDraftSuggestion } from "@/lib/templates/ai-draft";
 import { FilenameCopy, VimeoCopy } from "./vimeo-copy";
+import { useEagerUploads, type UploadStatus } from "./use-eager-uploads";
 
 type Category = { id: string; name: string; parentId: string | null };
-type UploadRecord = { path: string };
 
 export type InitialTemplateData = {
   metaTitle: string;
@@ -37,6 +35,7 @@ export type InitialTemplateData = {
   difficulty: string;
   videoUrl: string;
   isFree: boolean;
+  gender: "boy" | "girl" | null;
   supplies: string[];
   specs: Array<{ label: string; value: string }>;
   affiliateProductIds: string[];
@@ -64,18 +63,6 @@ function filenameFromPath(path: string) {
   return path.split("/").pop() || path;
 }
 
-async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await worker(items[index], index);
-    }
-  }));
-  return results;
-}
-
 /** Reads a JSON body without throwing: an HTML error page or empty body becomes a readable error instead of "Unexpected token <". */
 async function readJsonResponse<T extends object>(response: Response): Promise<T & { error?: string }> {
   const payload = await response.json().catch(() => null) as (T & { error?: string }) | null;
@@ -99,6 +86,35 @@ function toUploadError(error: unknown) {
   return error instanceof Error ? error : new Error("Upload failed. Please try again.");
 }
 
+const SAVE_TIMEOUT_MS = 45_000;
+
+function printableUploadLabel(status: UploadStatus | undefined) {
+  if (!status) return "Ready to upload";
+  if (status.state === "uploading") return status.progress ? `Uploading ${status.progress}%` : "Uploading…";
+  if (status.state === "error") return "Upload failed · retries when you save";
+  return "Uploaded";
+}
+
+function saveErrorMessage(error: unknown) {
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return "Saving is taking longer than usual. Press save again — it won't create a duplicate.";
+  }
+  if (error instanceof DOMException && error.name === "AbortError") return "An upload was cancelled. Press save again.";
+  return toUploadError(error).message;
+}
+
+function deleteInBackground(paths: string[]) {
+  const dropbox = paths.filter((path) => path.startsWith("/lvo-files/"));
+  const media = paths.filter((path) => !path.startsWith("/lvo-files/"));
+  const send = (url: string, list: string[]) => {
+    for (let index = 0; index < list.length; index += 12) {
+      void fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths: list.slice(index, index + 12) }), keepalive: true }).catch(() => undefined);
+    }
+  };
+  if (dropbox.length) send("/api/dropbox/delete", dropbox);
+  if (media.length) send("/api/templates/media-delete", media);
+}
+
 export function AddTemplateForm({ categories, subscribed = false, initialData, affiliateOptions = [] }: { categories: Category[]; subscribed?: boolean; initialData?: InitialTemplateData; affiliateOptions?: AffiliateProductOption[] }) {
   const router = useRouter();
   const editing = Boolean(initialData);
@@ -107,6 +123,14 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
   // New templates follow the title until the author edits the slug by hand; existing slugs are kept as-is.
   const [slug, setSlug] = useState(initialData?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(Boolean(initialData));
+  // Latest server answer for a slug; only trusted while it matches what's in the field.
+  const [slugCheck, setSlugCheck] = useState<{ slug: string; available: boolean; suggestion: string } | null>(null);
+  const normalizedSlug = slugify(slug) || slugify(title);
+  const slugUnchanged = Boolean(initialData) && normalizedSlug === initialData?.slug;
+  const currentSlugCheck = slugUnchanged
+    ? { slug: normalizedSlug, available: true, suggestion: normalizedSlug }
+    : slugCheck?.slug === normalizedSlug ? slugCheck : null;
+  const slugTaken = Boolean(currentSlugCheck && !currentSlugCheck.available);
   const [description, setDescription] = useState(initialData?.description ?? "");
   const [metaTitle, setMetaTitle] = useState(initialData?.metaTitle ?? "");
   const [metaDescription, setMetaDescription] = useState(initialData?.metaDescription ?? "");
@@ -138,14 +162,41 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
     }, 250);
     return () => window.clearTimeout(handle);
   }, [similarOpen, similarQuery, initialData?.id]);
+
+  // Check the slug as the author types. A slug made from the title quietly moves to the next free
+  // one (slug-2, slug-3, …); a slug typed by hand is left alone and flagged instead.
+  useEffect(() => {
+    if (!normalizedSlug || slugUnchanged) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ slug: normalizedSlug, excludeId: initialData?.id ?? "" });
+      fetch(`/api/templates/slug-check?${params}`, { signal: controller.signal })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((result: { slug: string; available: boolean; suggestion: string } | null) => {
+          if (!result) return;
+          setSlugCheck(result);
+          if (!result.available && !slugTouched) setSlug(result.suggestion);
+        })
+        .catch(() => undefined);
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [normalizedSlug, slugUnchanged, slugTouched, initialData?.id]);
   const [affiliateOpen, setAffiliateOpen] = useState(false);
   const [affiliateQuery, setAffiliateQuery] = useState("");
   const [tags, setTags] = useState<string[]>(initialData?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
   const [videoUrl, setVideoUrl] = useState(initialData?.videoUrl ?? "");
   const [printable, setPrintable] = useState<File | null>(null);
+  const uploads = useEagerUploads();
+  // A new template's id is chosen here, so retrying a save after a timeout can never create it twice.
+  const [newTemplateId] = useState(() => crypto.randomUUID());
+  const submittingRef = useRef(false);
   const [existingPrintablePath] = useState(initialData?.printablePath ?? "");
   const [isFree, setIsFree] = useState(initialData?.isFree ?? false);
+  const [gender, setGender] = useState<"boy" | "girl" | null>(initialData?.gender ?? null);
   const [images, setImages] = useState<TemplateImage[]>(
     () => initialData?.images.map((image) => ({ id: crypto.randomUUID(), kind: "existing" as const, path: image.path, url: image.url })) ?? [],
   );
@@ -170,6 +221,17 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
     }
     setError("");
     setPrintable(file);
+    // Upload now, while the author fills in the rest, named after the template: paper-flower.pdf.
+    if (file) uploads.start("printable", "printable", file, slugify(slug) || slugify(title) || "printable");
+    else uploads.discard("printable");
+  };
+
+  // New images upload as soon as they're added; removed ones are cancelled and cleaned up.
+  const handleImagesChange = (next: TemplateImage[]) => {
+    const nextIds = new Set(next.map((image) => image.id));
+    images.forEach((image) => { if (image.kind === "new" && !nextIds.has(image.id)) uploads.discard(image.id); });
+    next.forEach((image) => { if (image.kind === "new") void uploads.ensure(image.id, "image", image.file); });
+    setImages(next);
   };
 
   const videoLinkEmbed = parseVideoEmbedUrl(videoUrl);
@@ -234,122 +296,74 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid) return;
+    // Enter key, double clicks and slow responses can all fire submit again; only one save runs.
+    if (submittingRef.current) return;
+    if (!mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid || slugTaken) return;
     // Whichever button was pressed decides the status: "Save as draft" (value="draft") or publish.
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const asDraft = submitter?.value === "draft";
 
+    submittingRef.current = true;
     setSubmitting(true);
     setError("");
-    setStatus(editing ? "Saving changes…" : "Uploading files…");
-    const uploadGroup = crypto.randomUUID();
-    const uploadedToDropbox: UploadRecord[] = [];
-    const uploadedToSupabase: UploadRecord[] = [];
-
-    const uploadToDropbox = async (file: File) => {
-      const linkResult = await withNetworkRetry(async () => {
-        const response = await fetch("/api/dropbox/upload-link", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ uploadGroup, folder: "printable", extension: fileExtension(file) }),
-        });
-        const result = await readJsonResponse<{ path?: string; uploadUrl?: string }>(response);
-        if (!response.ok || !result.path || !result.uploadUrl) throw new Error(result.error || "Could not prepare file upload.");
-        return result as { path: string; uploadUrl: string };
-      });
-
-      const uploadResponse = await withNetworkRetry(() => fetch(linkResult.uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: file,
-      }));
-      if (!uploadResponse.ok) throw new Error(`Printable upload failed (${uploadResponse.status}). Please try again.`);
-      const path = linkResult.path;
-      uploadedToDropbox.push({ path });
-      return path;
-    };
-
-    const uploadToSupabase = async (folder: "gallery" | "thumbnail", file: File, index?: number) => {
-      const optimizedFile = await optimizeImageToWebp(file);
-      const linkResult = await withNetworkRetry(async () => {
-        const response = await fetch("/api/templates/media-upload-link", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ uploadGroup, folder, extension: fileExtension(optimizedFile), name: optimizedFile.name, index }),
-        });
-        const result = await readJsonResponse<{ path?: string; token?: string }>(response);
-        if (!response.ok || !result.path || !result.token) throw new Error(result.error || "Could not prepare file upload.");
-        return result as { path: string; token: string };
-      });
-
-      const supabase = createSupabaseBrowserClient();
-      await withNetworkRetry(async () => {
-        const { error: uploadError } = await supabase.storage.from("template-media").uploadToSignedUrl(linkResult.path, linkResult.token, optimizedFile);
-        // The SDK reports network failures as storage errors, so surface them as TypeErrors to get the same retry.
-        if (uploadError && /fetch|network|load failed/i.test(uploadError.message)) throw new TypeError(uploadError.message);
-        if (uploadError) throw new Error(uploadError.message || "Image upload failed.");
-      });
-      const path = linkResult.path;
-      uploadedToSupabase.push({ path });
-      return path;
-    };
 
     try {
+      // Files have been uploading in the background since they were picked; usually this is instant.
+      const waiting = uploads.pendingCount;
+      setStatus(waiting ? `Finishing ${waiting} upload${waiting === 1 ? "" : "s"}…` : asDraft ? "Saving draft…" : editing ? "Saving…" : "Publishing…");
       const [printablePath, mediaPaths] = await Promise.all([
-        printable ? uploadToDropbox(printable) : Promise.resolve(existingPrintablePath),
-        // Featured image first, then the rest through a small pool so uploads don't fight for bandwidth/CPU.
-        mapWithConcurrency(images, 6, (image, index) => (image.kind === "new"
-          ? uploadToSupabase(index === 0 ? "thumbnail" : "gallery", image.file, index === 0 ? undefined : index - 1)
-          : Promise.resolve(image.path))),
+        printable ? uploads.ensure("printable", "printable", printable, slugify(slug) || slugify(title) || "printable") : Promise.resolve(existingPrintablePath),
+        Promise.all(images.map((image) => (image.kind === "new" ? uploads.ensure(image.id, "image", image.file) : Promise.resolve(image.path)))),
       ]);
       const [thumbnailPath = "", ...galleryPaths] = mediaPaths;
 
-      setStatus(asDraft ? "Saving draft…" : editing ? "Saving…" : "Publishing template…");
-      const response = await fetch(editing ? `/api/templates/mine/${initialData!.id}` : "/api/templates/create", {
+      setStatus(asDraft ? "Saving draft…" : editing ? "Saving…" : "Publishing…");
+      const payload = JSON.stringify({
+        id: editing ? undefined : newTemplateId,
+        title: title.trim(),
+        slug: slug.trim(),
+        slugAuto: !slugTouched,
+        status: asDraft ? "draft" : "published",
+        description: description.trim(),
+        metaTitle: metaTitle.trim(),
+        metaDescription: metaDescription.trim(),
+        categoryIds,
+        minimumAge: Number(minimumAge),
+        maximumAge: Number(maximumAge),
+        durationMinutes: Number(duration),
+        difficulty,
+        videoUrl: videoUrl.trim(),
+        thumbnailPath,
+        printablePath,
+        isFree,
+        gender,
+        galleryPaths,
+        supplies: supplies.split(",").map((item) => item.trim()).filter(Boolean),
+        specs: specs.map(({ label, value }) => ({ label: label.trim(), value: value.trim() })).filter((spec) => spec.label && spec.value),
+        affiliateProductIds: affiliateIds,
+        similarTemplateIds: similarSelected.map((option) => option.id),
+        tags: [...tags, ...tagInput.split(",").map((item) => item.trim()).filter(Boolean)],
+      });
+      // Saving is safe to retry: a new template keeps its id, and an edit just writes the same values again.
+      const response = await withNetworkRetry(() => fetch(editing ? `/api/templates/mine/${initialData!.id}` : "/api/templates/create", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          slug: slug.trim(),
-          status: asDraft ? "draft" : "published",
-          description: description.trim(),
-          metaTitle: metaTitle.trim(),
-          metaDescription: metaDescription.trim(),
-          categoryIds,
-          minimumAge: Number(minimumAge),
-          maximumAge: Number(maximumAge),
-          durationMinutes: Number(duration),
-          difficulty,
-          videoUrl: videoUrl.trim(),
-          thumbnailPath,
-          printablePath,
-          isFree,
-          galleryPaths,
-          supplies: supplies.split(",").map((item) => item.trim()).filter(Boolean),
-          specs: specs.map(({ label, value }) => ({ label: label.trim(), value: value.trim() })).filter((spec) => spec.label && spec.value),
-          affiliateProductIds: affiliateIds,
-          similarTemplateIds: similarSelected.map((option) => option.id),
-          tags: [...tags, ...tagInput.split(",").map((item) => item.trim()).filter(Boolean)],
-        }),
-      });
-      const result = await readJsonResponse<{ id?: string; slug?: string }>(response);
+        body: payload,
+        signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
+      }));
+      const result = await readJsonResponse<{ id?: string; slug?: string; suggestion?: string }>(response);
+      // A clash found at save time shows up under the slug field, with the suggested fix.
+      if (response.status === 409 && result.suggestion) setSlugCheck({ slug: normalizedSlug, available: false, suggestion: result.suggestion });
+      if (response.status === 401) throw new Error("Your session expired. Sign in again in another tab, then press save again. Nothing you entered is lost.");
       if (!response.ok || !result.id) throw new Error(result.error || (editing ? "Could not save changes." : "Could not publish this template."));
+
+      uploads.markSaved([printablePath, ...mediaPaths]);
 
       if (editing && initialData) {
         const keptImagePaths = new Set(images.filter((image) => image.kind === "existing").map((image) => image.path));
-        const removedImagePaths = initialData.images.map((image) => image.path).filter((path) => !keptImagePaths.has(path));
-        if (printable && existingPrintablePath) removedImagePaths.push(existingPrintablePath);
-
-        const staleDropboxPaths = removedImagePaths.filter((path) => path.startsWith("/lvo-files/"));
-        const staleSupabasePaths = removedImagePaths.filter((path) => !path.startsWith("/lvo-files/"));
-        void Promise.all([
-          staleDropboxPaths.length
-            ? fetch("/api/dropbox/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths: staleDropboxPaths }) }).catch(() => undefined)
-            : null,
-          staleSupabasePaths.length
-            ? fetch("/api/templates/media-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths: staleSupabasePaths }) }).catch(() => undefined)
-            : null,
-        ]);
+        const removedPaths = initialData.images.map((image) => image.path).filter((path) => !keptImagePaths.has(path));
+        if (printable && existingPrintablePath && existingPrintablePath !== printablePath) removedPaths.push(existingPrintablePath);
+        deleteInBackground(removedPaths);
       }
 
       setStatus(asDraft ? "Draft saved" : editing ? "Saved" : "Published");
@@ -357,25 +371,24 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
       // Drafts are hidden from the site, so they go back to the manage list instead of their public page.
       router.replace(asDraft || editing ? "/templates/manage" : `/t/${result.slug ?? result.id}`);
     } catch (caughtError) {
-      if (uploadedToDropbox.length) {
-        await fetch("/api/dropbox/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paths: uploadedToDropbox.map(({ path }) => path) }),
-        }).catch(() => undefined);
-      }
-      if (uploadedToSupabase.length) {
-        await fetch("/api/templates/media-delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paths: uploadedToSupabase.map(({ path }) => path) }),
-        }).catch(() => undefined);
-      }
-      setError(toUploadError(caughtError).message);
+      // Uploaded files are kept, so pressing save again doesn't upload anything twice.
+      setError(saveErrorMessage(caughtError));
       setStatus("");
       setSubmitting(false);
+      submittingRef.current = false;
     }
   };
+
+  // Warn before closing the tab while files are still uploading or a save is in flight.
+  useEffect(() => {
+    if (!uploads.busy && !submitting) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [uploads.busy, submitting]);
+
+  // Where a save usually lands, warmed up ahead of time so the redirect is quick.
+  useEffect(() => { router.prefetch("/templates/manage"); }, [router]);
 
   const deleteTemplate = async () => {
     if (!initialData) return;
@@ -469,13 +482,22 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
               onChange={(event) => { setSlug(event.target.value); setSlugTouched(true); setError(""); }}
               onBlur={() => setSlug((current) => slugify(current))}
               placeholder="paper-flower-bouquet"
-              className="h-12 w-full rounded-xl bg-[#f2f2f2] px-4 font-mono text-sm outline-none ring-black/10 transition placeholder:text-black/35 focus:ring-2"
+              aria-invalid={slugTaken}
+              aria-describedby="slug-status"
+              className={`h-12 w-full rounded-xl bg-[#f2f2f2] px-4 font-mono text-sm outline-none transition placeholder:text-black/35 focus:ring-2 ${slugTaken ? "ring-2 ring-red-500/70" : "ring-black/10"}`}
             />
-            {slugTouched && slug !== slugify(title) ? (
-              <div className="mt-1.5 flex justify-end text-xs text-black/35">
+            <div id="slug-status" aria-live="polite" className="mt-1.5 flex min-h-5 items-start justify-between gap-3 text-xs">
+              <SlugStatus
+                slug={normalizedSlug}
+                check={currentSlugCheck}
+                autoAdjusted={!slugTouched && Boolean(normalizedSlug) && normalizedSlug !== slugify(title)}
+                titleSlug={slugify(title)}
+                onUseSuggestion={(suggestion) => { setSlug(suggestion); setError(""); }}
+              />
+              {slugTouched && slug !== slugify(title) ? (
                 <button type="button" onClick={() => { setSlug(slugify(title)); setSlugTouched(false); }} className="shrink-0 font-semibold text-black/55 underline-offset-2 hover:underline">Reset</button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </Field>
 
           <Field label="Description" optional aiActive={aiField === "description"}>
@@ -521,6 +543,16 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
               </button>
             </Field>
           </div>
+
+          <Field label="Best for">
+            <div className="flex h-12 w-full items-center gap-1 rounded-xl bg-[#f2f2f2] p-1" role="group" aria-label="Best for">
+              {([[null, "Both"], ["boy", "Boys"], ["girl", "Girls"]] as const).map(([value, label]) => (
+                <button key={label} type="button" aria-pressed={gender === value} onClick={() => setGender(value)} className={`h-full flex-1 rounded-lg text-sm font-semibold transition-colors ${gender === value ? "bg-black text-white" : "text-black/45"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
 
           <div className="grid grid-cols-2 gap-2.5">
             <Field label="Time in minutes" aiActive={aiField === "time"}>
@@ -698,7 +730,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
           </Field>
 
           <Field label="Images" optional={videoReady}>
-            <ImageReorderField images={images} onChange={setImages} onError={setError} maxImages={MAX_IMAGES} />
+            <ImageReorderField images={images} onChange={handleImagesChange} onError={setError} maxImages={MAX_IMAGES} uploadStatuses={uploads.statuses} />
           </Field>
           {aiSuggestion ? <FilenameCopy names={aiSuggestion.filenameIdeas} /> : null}
 
@@ -707,7 +739,7 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
               required={!editing}
               icon={<FileText className="h-5 w-5" />}
               title={printable?.name ?? (existingPrintablePath ? filenameFromPath(existingPrintablePath) : "Printable file")}
-              detail={printable ? `${formatFileSize(printable.size)} · Ready to upload` : existingPrintablePath ? "Already uploaded" : "Required · PDF, ZIP, JPG, PNG, or WebP · up to 150 MB"}
+              detail={printable ? `${formatFileSize(printable.size)} · ${printableUploadLabel(uploads.statuses.printable)}` : existingPrintablePath ? "Already uploaded" : "Required · PDF, ZIP, JPG, PNG, or WebP · up to 150 MB"}
               selected={hasPrintable}
               accept={PRINTABLE_ACCEPT}
               onChange={selectPrintable}
@@ -738,10 +770,10 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
         {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
 
         <div className="mt-7 flex gap-3">
-          <button type="submit" value="draft" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="flex h-13 flex-1 items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black transition active:scale-[0.99] disabled:text-black/30">
+          <button type="submit" value="draft" disabled={submitting || slugTaken || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="flex h-13 flex-1 items-center justify-center gap-2 rounded-xl bg-[#f2f2f2] text-sm font-semibold text-black transition active:scale-[0.99] disabled:text-black/30">
             Save as draft
           </button>
-          <button type="submit" value="published" disabled={submitting || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="flex h-13 flex-[1.4] items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
+          <button type="submit" value="published" disabled={submitting || slugTaken || !mediaReady || !hasPrintable || !title.trim() || !categoryIds.length || !ageRangeValid} className="flex h-13 flex-[1.4] items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-white transition active:scale-[0.99] disabled:bg-black/20">
             {submitting ? <><LoaderCircle className="h-5 w-5 animate-spin" />{status}</> : editing && initialData?.status !== "draft" ? <><Check className="h-4 w-4" />Save changes</> : <><Plus className="h-4 w-4" />Publish template</>}
           </button>
         </div>
@@ -801,6 +833,37 @@ export function AddTemplateForm({ categories, subscribed = false, initialData, a
         </Drawer>
       ) : null}
     </main>
+  );
+}
+
+function SlugStatus({ slug, check, autoAdjusted, titleSlug, onUseSuggestion }: { slug: string; check: { available: boolean; suggestion: string } | null; autoAdjusted: boolean; titleSlug: string; onUseSuggestion: (slug: string) => void }) {
+  if (!slug) return <span className="text-black/35">Made from the title.</span>;
+  if (!check) {
+    return (
+      <span className="flex items-center gap-1.5 text-black/40">
+        <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+        Checking /t/{slug}
+      </span>
+    );
+  }
+  if (!check.available) {
+    return (
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-red-600">
+        <span>Already used by another template.</span>
+        <button type="button" onClick={() => onUseSuggestion(check.suggestion)} className="rounded-md bg-red-50 px-2 py-0.5 font-mono font-semibold text-red-700 transition hover:bg-red-100">
+          Use {check.suggestion}
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-emerald-700">
+      <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} />
+      <span className="min-w-0 truncate">
+        {autoAdjusted ? <>“{titleSlug}” is taken, so this one will be </> : null}
+        <span className="font-mono">/t/{slug}</span>{autoAdjusted ? null : " is available"}
+      </span>
+    </span>
   );
 }
 

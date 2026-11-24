@@ -136,11 +136,11 @@ function resolveRow(index: number, raw: CsvRecord, categories: Category[], fileM
   };
 }
 
-async function uploadToDropbox(uploadGroup: string, file: File) {
+async function uploadToDropbox(uploadGroup: string, file: File, name: string) {
   const linkResponse = await fetch("/api/dropbox/upload-link", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uploadGroup, folder: "printable", extension: fileExtension(file) }),
+    body: JSON.stringify({ uploadGroup, folder: "printable", extension: fileExtension(file), name }),
   });
   const linkResult = await linkResponse.json() as { path?: string; uploadUrl?: string; error?: string };
   if (!linkResponse.ok || !linkResult.path || !linkResult.uploadUrl) throw new Error(linkResult.error || "Could not prepare file upload.");
@@ -169,7 +169,7 @@ async function importRow(row: ResolvedRow): Promise<{ ok: true; id: string } | {
   const uploadedToDropbox: string[] = [];
   const uploadedToSupabase: string[] = [];
   try {
-    const printablePath = await uploadToDropbox(uploadGroup, row.printableFile!);
+    const printablePath = await uploadToDropbox(uploadGroup, row.printableFile!, row.title);
     uploadedToDropbox.push(printablePath);
 
     const thumbnailPath = row.featuredImageFile ? await uploadToSupabase(uploadGroup, "thumbnail", row.featuredImageFile) : "";

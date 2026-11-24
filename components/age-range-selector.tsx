@@ -1,26 +1,32 @@
 "use client";
 
-const AGE_RANGE_OPTIONS = Array.from({ length: 17 }, (_, age) => age);
+const MAX_AGE = 16;
 
 export function AgeRangeSelector({
   minimumAge,
   maximumAge,
   onChange,
   allowClear = false,
+  startAge = 0,
   className = "",
 }: {
   minimumAge: number | null;
   maximumAge: number | null;
   onChange: (minimumAge: number | null, maximumAge: number | null) => void;
   allowClear?: boolean;
+  // Youngest age offered; the filters start at 2, the template form at 0.
+  startAge?: number;
   className?: string;
 }) {
   const hasRange = minimumAge !== null && maximumAge !== null;
+  const ages = Array.from({ length: MAX_AGE - startAge + 1 }, (_, index) => startAge + index);
+  // 17 ages (0–16) fit 7 per row; 15 ages (2–16) fit 5 per row with no ragged last row.
+  const columns = ages.length % 5 === 0 ? "grid-cols-5" : "grid-cols-7";
 
   return (
     <div className={className}>
-      <div className="grid grid-cols-7 gap-2" role="group" aria-label={hasRange ? `Selected age range ${minimumAge} to ${maximumAge}` : "No age range selected"}>
-        {AGE_RANGE_OPTIONS.map((age) => {
+      <div className={`grid ${columns} gap-2`} role="group" aria-label={hasRange ? `Selected age range ${minimumAge} to ${maximumAge}` : "No age range selected"}>
+        {ages.map((age) => {
           const selected = hasRange && age >= minimumAge && age <= maximumAge;
           return (
             <button

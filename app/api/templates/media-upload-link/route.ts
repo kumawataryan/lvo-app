@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: "Please sign in again." }, { status: 401 });
   if (!canUserAddTemplates(user)) return Response.json({ error: "You do not have permission to upload templates." }, { status: 403 });
 
-  const body = await request.json().catch(() => null) as { uploadGroup?: unknown; folder?: unknown; extension?: unknown; index?: unknown; name?: unknown } | null;
+  const body = await request.json().catch(() => null) as { uploadGroup?: unknown; folder?: unknown; extension?: unknown; index?: unknown; name?: unknown; key?: unknown } | null;
   const uploadGroup = typeof body?.uploadGroup === "string" ? body.uploadGroup : "";
   const folder = body?.folder === "gallery" || body?.folder === "thumbnail" || body?.folder === "affiliate" ? body.folder : "";
   // Affiliate product images are managed by admins only.
@@ -35,14 +35,19 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid upload request." }, { status: 400 });
   }
   if (!["jpg", "jpeg", "png", "webp"].includes(extension)) return Response.json({ error: "Unsupported file type." }, { status: 400 });
-  if (folder === "gallery" && (!Number.isInteger(index) || index < 0 || index > 29)) {
+  // A per-image key (sent when images upload as soon as they're added, before their order is final)
+  // replaces the position in the name, so reordering or removing images can never make two share a path.
+  const key = typeof body?.key === "string" && /^[a-z0-9]{6,16}$/.test(body.key) ? body.key : "";
+  if (folder === "gallery" && !key && (!Number.isInteger(index) || index < 0 || index > 29)) {
     return Response.json({ error: "Invalid gallery position." }, { status: 400 });
   }
 
   // Position is part of the name, so two images with the same original filename (e.g. "photo.jpg" twice,
   // or a featured image and a gallery image) never map to the same object path in one upload group.
   const baseName = slugifyFilename(rawName) || "image";
-  const filename = folder === "gallery"
+  const filename = key
+    ? `${baseName}-${key}.${extension}`
+    : folder === "gallery"
     ? `gallery-${index + 1}-${baseName}.${extension}`
     : `thumbnail-${baseName}.${extension}`;
   const path = `${user.id}/${uploadGroup}/${filename}`;

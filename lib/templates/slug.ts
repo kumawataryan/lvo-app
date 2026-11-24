@@ -12,3 +12,13 @@ export function slugify(value: string) {
     .slice(0, TEMPLATE_SLUG_MAX_LENGTH)
     .replace(/-+$/g, "");
 }
+
+/** The base slug if it is free, otherwise base-2, base-3, … (trimming the base so the suffix still fits). */
+export function nextAvailableSlug(base: string, taken: Set<string>) {
+  if (!taken.has(base)) return base;
+  for (let counter = 2; ; counter += 1) {
+    const suffix = `-${counter}`;
+    const candidate = `${base.slice(0, TEMPLATE_SLUG_MAX_LENGTH - suffix.length).replace(/-+$/g, "")}${suffix}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}

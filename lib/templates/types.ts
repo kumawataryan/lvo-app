@@ -1,4 +1,5 @@
 export type TemplateDifficulty = "easy" | "medium" | "advanced";
+export type TemplateGender = "boy" | "girl";
 
 export type TemplateCategory = {
   id: string;
@@ -64,6 +65,8 @@ export type PublishedTemplate = {
   badge?: string | null;
   minimumAge: number | null;
   maximumAge: number | null;
+  // Null when the template suits everyone.
+  gender?: TemplateGender | null;
   difficulty: TemplateDifficulty;
   videoUrl: string | null;
   videoEmbedUrl: string | null;

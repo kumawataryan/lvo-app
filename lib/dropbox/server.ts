@@ -85,3 +85,7 @@ export async function downloadDropboxFile(path: string) {
     cache: "no-store",
   });
 }
+
+export function moveDropboxFile(fromPath: string, toPath: string) {
+  return dropboxRpc<{ metadata: { path_display: string } }>("files/move_v2", { from_path: fromPath, to_path: toPath, autorename: false });
+}

@@ -6,8 +6,9 @@ import { createContext, forwardRef, Fragment, type FormEvent, startTransition, u
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CirclePlay, ClipboardList, Clock3, Compass, Download,  FastForward,  Folder, FolderPlus, Gem, GraduationCap, Hammer, Heart, House, Image as ImageIcon, LayoutGrid, LoaderCircle, Lock, LogOut, MoonStar, MoreHorizontal, Palette, Pause, Pencil, Play, Plus, Printer, Puzzle, Quote,   Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, CirclePlay, Clock3, Compass, Download,  FastForward,  Folder, FolderPlus, Gem, Heart, Image as ImageIcon, LayoutGrid, LoaderCircle, Lock, LogOut, MoonStar, MoreHorizontal, Pause, Play, Printer, Puzzle, Quote,   Search, Share2, Shapes, SlidersHorizontal, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { AgeRangeSelector } from "@/components/age-range-selector";
+import { AddIcon, BoyIcon, CakeIcon, CategoriesIcon, CraftShapesIcon, CrownIcon, CategoryOutlineIcon, DifficultyIcon, DifficultyStepsIcon, FlameIcon, GiftIcon, GirlIcon, HomeIcon, MoonIcon, ProfileIcon, SearchIcon, SparkleIcon } from "@/components/app-icons";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { toast } from "@/components/ui/toast";
 import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
@@ -21,6 +22,7 @@ import { useEmbedPlayer } from "@/lib/video/use-embed-player";
 import { useEmbedThumbnail } from "@/lib/video/use-embed-thumbnail";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useStoryPlayer } from "@/components/story-player";
+import { startNavigationProgress } from "@/lib/navigation/progress";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 
 export type Tab = "templates" | "browse" | "search" | "stories" | "products" | "profile";
@@ -258,6 +260,8 @@ export type Template = {
   isFree: boolean;
   minimumAge: number | null;
   maximumAge: number | null;
+  gender: "boy" | "girl" | null;
+  publishedAt: string | null;
   palette?: [string, string, string];
   motif?: "flowers" | "lantern" | "origami" | "card" | "wreath" | "clay" | "vase" | "hanger";
 };
@@ -291,6 +295,9 @@ export function mapPublishedTemplate(template: PublishedTemplate): Template {
     isFree: template.isFree,
     minimumAge: template.minimumAge,
     maximumAge: template.maximumAge,
+    // Cached template data from before this field existed has no gender.
+    gender: template.gender ?? null,
+    publishedAt: template.publishedAt ?? null,
   };
 }
 
@@ -499,6 +506,7 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
 
   const goToTab = (nextTab: Tab) => {
     const targetUrl = tabRoute(nextTab);
+    startNavigationProgress(targetUrl);
     const navigate = () => startTransition(() => {
       setOptimisticTab(nextTab);
       router.push(targetUrl);
@@ -556,19 +564,166 @@ function AppShell({ children, initialTemplates = [], initialCategories = DEFAULT
   );
 }
 
+type HomeFilters = {
+  ageMin: number | null;
+  ageMax: number | null;
+  category: string | null;
+  gender: "boy" | "girl" | null;
+  freeOnly: boolean;
+  difficulty: Template["difficulty"] | null;
+  sort: "popular" | "new" | null;
+};
+
+const EMPTY_HOME_FILTERS: HomeFilters = { ageMin: null, ageMax: null, category: null, gender: null, freeOnly: false, difficulty: null, sort: null };
+
+// Weekly top 10 first, then this month's popular picks, then everything else by all-time downloads.
+const POPULAR_BADGE_RANK: Record<string, number> = { "Top 10 this week": 0, "Popular this month": 1 };
+
+function sortHomeTemplates(templates: Template[], sort: HomeFilters["sort"]) {
+  if (!sort) return templates;
+  const sorted = [...templates];
+  if (sort === "new") {
+    sorted.sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
+  } else {
+    sorted.sort((a, b) => (POPULAR_BADGE_RANK[a.badge ?? ""] ?? 2) - (POPULAR_BADGE_RANK[b.badge ?? ""] ?? 2) || b.downloadCount - a.downloadCount);
+  }
+  return sorted;
+}
+
+function matchesHomeFilters(template: Template, filters: HomeFilters) {
+  if (filters.category && template.category !== filters.category) return false;
+  if (filters.freeOnly && !template.isFree) return false;
+  if (filters.difficulty && template.difficulty !== filters.difficulty) return false;
+  // Templates without a gender suit everyone, so they stay visible under either choice.
+  if (filters.gender && template.gender && template.gender !== filters.gender) return false;
+  if (filters.ageMax !== null && template.minimumAge !== null && filters.ageMax < template.minimumAge) return false;
+  if (filters.ageMin !== null && template.maximumAge !== null && filters.ageMin > template.maximumAge) return false;
+  return true;
+}
+
 export function TemplatesTabContent() {
-  const { templates, templatesError, subscribed, canAddTemplates, trialOffer, currency, interactions, activeTab, goToTab, openTemplate } = useAppShell();
+  const { templates, templatesError, categories, subscribed, canAddTemplates, trialOffer, currency, interactions, activeTab, goToTab, openTemplate } = useAppShell();
+  const [filters, setFilters] = useState<HomeFilters>(EMPTY_HOME_FILTERS);
+  const filtersActive = Object.entries(filters).some(([key, value]) => value !== EMPTY_HOME_FILTERS[key as keyof HomeFilters]);
+  const visibleTemplates = useMemo(() => (filtersActive ? sortHomeTemplates(templates.filter((template) => matchesHomeFilters(template, filters)), filters.sort) : templates), [templates, filters, filtersActive]);
+  // Only offer categories that have templates in the feed, in the store's category order.
+  const categoryOptions = useMemo(() => {
+    const present = new Set(templates.map((template) => template.category));
+    const ordered = categories.filter((category) => present.has(category.name)).map((category) => ({ name: category.name, icon: category.icon }));
+    const known = new Set(ordered.map((category) => category.name));
+    return [...ordered, ...[...present].filter((name) => !known.has(name)).sort().map((name) => ({ name, icon: undefined }))];
+  }, [categories, templates]);
   // Random position for the install tile, picked once in the browser so server and client markup match.
   const [installIndex, setInstallIndex] = useState<number | null>(null);
   useEffect(() => {
     if (!templates.length) return;
     setInstallIndex(Math.floor(Math.random() * Math.min(templates.length, 24)));
   }, [templates.length]);
+  // Promo tiles would crowd a filtered result list, so they only appear in the unfiltered feed.
+  const inserts = filtersActive ? [] : [{ at: installIndex, node: <InstallTile /> }, { at: 10, node: <RequestTemplateCard /> }, ...(subscribed ? [] : [{ at: 4, node: <PlanCard currency={currency} /> }])];
   return (
     <section className="m-0 flex min-h-0 flex-1 flex-col bg-white p-0">
       <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} activeTab={activeTab} onTabChange={goToTab} />
-      {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : <TemplateFeed templates={templates} leading={trialOffer ? <TrialOfferCard /> : null} inserts={[{ at: installIndex, node: <InstallTile /> }, { at: 10, node: <RequestTemplateCard /> }, ...(subscribed ? [] : [{ at: 4, node: <PlanCard currency={currency} /> }])]} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />}
+      {templatesError ? <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-black/50">{templatesError}</div> : (
+        <>
+          <HomeFilterBar filters={filters} onChange={setFilters} categories={categoryOptions} active={filtersActive} />
+          <TemplateFeed templates={visibleTemplates} scrollResetKey={JSON.stringify(filters)} empty={filtersActive ? <EmptyFilterResults onClear={() => setFilters(EMPTY_HOME_FILTERS)} /> : undefined} leading={trialOffer && !filtersActive ? <TrialOfferCard /> : null} inserts={inserts} onOpenDetail={openTemplate} subscribed={subscribed} interactions={interactions} />
+        </>
+      )}
     </section>
+  );
+}
+
+function HomeFilterBar({ filters, onChange, categories, active }: { filters: HomeFilters; onChange: (filters: HomeFilters) => void; categories: Array<{ name: string; icon?: string | null }>; active: boolean }) {
+  const update = (patch: Partial<HomeFilters>) => onChange({ ...filters, ...patch });
+  const ageLabel = filters.ageMin === null || filters.ageMax === null
+    ? "Age"
+    : filters.ageMin === filters.ageMax ? `Age ${filters.ageMin}` : `Age ${filters.ageMin}–${filters.ageMax}`;
+  const toggle = <K extends keyof HomeFilters>(key: K, value: HomeFilters[K]) => update({ [key]: filters[key] === value ? EMPTY_HOME_FILTERS[key] : value } as Partial<HomeFilters>);
+
+  return (
+    <div role="toolbar" aria-label="Filter templates" className="flex shrink-0 items-center gap-2 overflow-x-auto px-3 pb-3 pt-0 [scrollbar-width:none] md:px-4 lg:px-5 [&::-webkit-scrollbar]:hidden">
+      {active ? (
+        <button type="button" aria-label="Clear all filters" onClick={() => onChange(EMPTY_HOME_FILTERS)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f2f2f2] text-black transition active:scale-95 hover:bg-[#e9e9e9] min-[1033px]:h-14 min-[1033px]:w-14 min-[1033px]:rounded-2xl">
+          <X className="h-5 w-5" strokeWidth={2.25} />
+        </button>
+      ) : null}
+
+      <FilterChip icon={<FlameIcon />} selected={filters.sort === "popular"} onClick={() => toggle("sort", "popular")}>Popular</FilterChip>
+      <FilterChip icon={<SparkleIcon />} selected={filters.sort === "new"} onClick={() => toggle("sort", "new")}>New</FilterChip>
+
+      {/* The menu stays open so a range can be picked with two taps. */}
+      <FilterMenu icon={<CakeIcon />} label={ageLabel} selected={filters.ageMin !== null} title="Age range" className="w-80">
+        <AgeRangeSelector minimumAge={filters.ageMin} maximumAge={filters.ageMax} onChange={(ageMin, ageMax) => update({ ageMin, ageMax })} allowClear startAge={2} />
+      </FilterMenu>
+      {categories.length > 1 ? (
+        <FilterMenu icon={<CraftShapesIcon />} label={filters.category ?? "Category"} selected={filters.category !== null} title="Category">
+          <FilterOptions options={categories.map((category) => ({ value: category.name, label: category.name, icon: <CategoryOutlineIcon name={category.name} icon={category.icon} className="h-5 w-5 shrink-0" /> }))} value={filters.category} onSelect={(category) => update({ category })} />
+        </FilterMenu>
+      ) : null}
+      <FilterChip icon={<GiftIcon />} selected={filters.freeOnly} onClick={() => update({ freeOnly: !filters.freeOnly })}>Free</FilterChip>
+      <FilterChip icon={<BoyIcon />} selected={filters.gender === "boy"} onClick={() => toggle("gender", "boy")}>Boys</FilterChip>
+      <FilterChip icon={<GirlIcon />} selected={filters.gender === "girl"} onClick={() => toggle("gender", "girl")}>Girls</FilterChip>
+      <FilterMenu icon={filters.difficulty ? <DifficultyIcon level={filters.difficulty} /> : <DifficultyStepsIcon />} label={filters.difficulty ?? "Difficulty"} selected={filters.difficulty !== null} title="Difficulty">
+        <FilterOptions options={(["Easy", "Medium", "Advanced"] as const).map((level) => ({ value: level, label: level, icon: <DifficultyIcon level={level} className="h-5 w-5 shrink-0" /> }))} value={filters.difficulty} onSelect={(difficulty) => update({ difficulty })} />
+      </FilterMenu>
+    </div>
+  );
+}
+
+function FilterChip({ icon, selected, onClick, children }: { icon: ReactNode; selected: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" aria-pressed={selected} onClick={() => { triggerHaptic(); onClick(); }} className={filterChipClass(selected)}>
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function EmptyFilterResults({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="flex min-h-64 flex-col items-center justify-center gap-3 px-8 text-center">
+      <p className="text-sm text-black/50">No templates match these filters.</p>
+      <button type="button" onClick={onClear} className="h-11 rounded-xl bg-brand px-4 text-sm font-semibold text-white transition active:scale-95">Clear filters</button>
+    </div>
+  );
+}
+
+function filterChipClass(selected: boolean) {
+  // Same size, shape and colors as the navbar buttons above.
+  return `flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-4 text-sm font-medium transition active:scale-95 min-[1033px]:h-14 min-[1033px]:rounded-2xl ${selected ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`;
+}
+
+function FilterMenu({ icon, label, selected, title, className = "w-56", children }: { icon: ReactNode; label: string; selected: boolean; title: string; className?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className={filterChipClass(selected)}>
+        {icon}
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2.4} />
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={6} className={`${className} rounded-2xl bg-white p-3`}>
+        <PopoverTitle className="sr-only">{title}</PopoverTitle>
+        <div onClick={(event) => { if ((event.target as HTMLElement).closest("[data-closes-menu]")) setOpen(false); }}>{children}</div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function FilterOptions<T extends string>({ options, value, onSelect }: { options: Array<{ value: T; label: string; icon?: ReactNode }>; value: T | null; onSelect: (value: T | null) => void }) {
+  return (
+    <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto">
+      {options.map((option) => {
+        const selected = value === option.value;
+        return (
+          <button key={option.value} type="button" data-closes-menu aria-pressed={selected} onClick={() => onSelect(selected ? null : option.value)} className={`flex h-10 items-center justify-between rounded-lg px-3 text-left text-sm transition ${selected ? "bg-black/[0.06] font-semibold text-black" : "text-black/75 hover:bg-black/[0.04]"}`}>
+            <span className="flex min-w-0 items-center gap-2.5">{option.icon}<span className="truncate">{option.label}</span></span>
+            {selected ? <Check className="h-4 w-4" strokeWidth={2.4} /> : null}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -868,13 +1023,12 @@ function SceneMedia({ story, index, className }: { story: Story; index: number; 
 }
 
 export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false, canAddTemplates = false, subscribed = false, categoriesOverride, categoryOptions, activeTab, onTabChange, alwaysShowNav = false }: { activeCategory: string; onCategoryChange: (category: string) => void; dark?: boolean; canAddTemplates?: boolean; subscribed?: boolean; categoriesOverride?: string[]; categoryOptions?: TemplateCategory[]; activeTab?: Tab; onTabChange?: (tab: Tab) => void; alwaysShowNav?: boolean }) {
-  const router = useRouter();
   const filterCategories = categoriesOverride ?? (categoryOptions ?? []).map((category) => category.name);
   const categoryIcons = new Map((categoryOptions ?? []).map((category) => [category.name, category.icon]));
-  const desktopNavItems: { tab: Tab; label: string; icon: typeof Search }[] = [
-    { tab: "search", label: "Search", icon: Search },
-    { tab: "browse", label: "Category", icon: LayoutGrid },
-    { tab: "profile", label: "Profile", icon: UserRound },
+  const desktopNavItems: { tab: Tab; label: string; icon: (props: { className?: string }) => ReactNode }[] = [
+    { tab: "search", label: "Search", icon: SearchIcon },
+    { tab: "browse", label: "Category", icon: CategoriesIcon },
+    { tab: "profile", label: "Profile", icon: ProfileIcon },
   ];
 
   return (
@@ -896,53 +1050,55 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {canAddTemplates ? (
-            <button
-              type="button"
+            <Link
+              href="/templates/new"
               aria-label="Add template"
-              onClick={() => router.push("/templates/new")}
+              onClick={() => startNavigationProgress("/templates/new")}
               className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black transition active:scale-95 hover:bg-[#e9e9e9]"
             >
-              <Plus className="h-5 w-5" strokeWidth={2.25} />
-            </button>
+              <AddIcon className="h-5 w-5" />
+            </Link>
           ) : null}
           {onTabChange ? (
             <div className={`shrink-0 items-center gap-2 ${alwaysShowNav ? "flex" : "hidden min-[1033px]:flex"}`}>
               {desktopNavItems.filter(({ tab }) => tab !== "profile").map(({ tab, label, icon: Icon }) => (
-                <button
+                <Link
                   key={tab}
-                  type="button"
+                  href={tabRoute(tab)}
                   aria-label={label}
                   aria-current={activeTab === tab ? "page" : undefined}
-                  onClick={() => onTabChange(tab)}
+                  // A real link (open in new tab, long-press, prefetch); normal clicks go through the app's tab switch.
+                  onNavigate={(event) => { event.preventDefault(); onTabChange(tab); }}
                   className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
                 >
-                  <Icon className="h-5 w-5" strokeWidth={1.8} fill={activeTab === tab ? "currentColor" : "none"} />
-                </button>
+                  <Icon className="h-5 w-5" />
+                </Link>
               ))}
             </div>
           ) : null}
           {subscribed ? null : (
-            <button type="button" aria-label="Subscribe" onClick={() => router.push("/subscription")} className={`flex h-14 items-center gap-1.5 rounded-2xl px-4 text-xs font-medium shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95 ${dark ? "bg-white text-black" : "bg-brand text-white"}`}>
+            <Link href="/subscription" aria-label="Subscribe" onClick={() => startNavigationProgress("/subscription")} className={`flex h-14 items-center gap-1.5 rounded-2xl px-4 text-xs font-medium shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95 ${dark ? "bg-white text-black" : "bg-brand text-white"}`}>
               <SubscribeIcon />
               <span className="flex flex-col items-start leading-tight">
                 <span>Subscribe</span>
                 <span className={dark ? "text-[11px] text-black/55" : "text-[11px] text-white/65"}>{PLAN_DETAILS.monthly.price}/mo</span>
               </span>
-            </button>
+            </Link>
           )}
           {onTabChange ? (
             <div className={`shrink-0 items-center gap-2 ${alwaysShowNav ? "flex" : "hidden min-[1033px]:flex"}`}>
               {desktopNavItems.filter(({ tab }) => tab === "profile").map(({ tab, label, icon: Icon }) => (
-                <button
+                <Link
                   key={tab}
-                  type="button"
+                  href={tabRoute(tab)}
                   aria-label={label}
                   aria-current={activeTab === tab ? "page" : undefined}
-                  onClick={() => onTabChange(tab)}
+                  // A real link (open in new tab, long-press, prefetch); normal clicks go through the app's tab switch.
+                  onNavigate={(event) => { event.preventDefault(); onTabChange(tab); }}
                   className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
                 >
-                  <Icon className="h-5 w-5" strokeWidth={1.8} fill={activeTab === tab ? "currentColor" : "none"} />
-                </button>
+                  <Icon className="h-5 w-5" />
+                </Link>
               ))}
             </div>
           ) : null}
@@ -959,7 +1115,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
               className={`flex min-w-0 items-center gap-2 rounded-2xl p-2.5 text-left transition active:scale-[0.98] ${activeCategory === category.name ? "bg-brand text-white" : "bg-[#f2f2f2] text-black"}`}
             >
               <span className="flex h-9 w-7 shrink-0 items-center justify-center">
-                <CategoryIcon icon={category.icon} />
+                <CategoryIcon name={category.name} icon={category.icon} />
               </span>
               <span className="min-w-0 flex-1 truncate text-sm font-semibold">{category.name}</span>
               <ChevronRight className={`h-4 w-4 shrink-0 ${activeCategory === category.name ? "text-white/55" : "text-black/30"}`} strokeWidth={2} />
@@ -975,7 +1131,7 @@ export function TemplateTopBar({ activeCategory, onCategoryChange, dark = false,
               onClick={() => onCategoryChange(category)}
               className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-[9px] text-[15px] font-medium backdrop-blur-xl transition active:scale-95 ${activeCategory === category ? (dark ? "bg-white/90 text-black" : "bg-black/85 text-white") : (dark ? "bg-white/20 text-white hover:bg-white/25" : "bg-black/[0.07] text-black/60 hover:bg-black/11")}`}
             >
-              {category !== "All" ? <CategoryIcon icon={categoryIcons.get(category)} /> : null}
+              {category !== "All" ? <CategoryIcon name={category} icon={categoryIcons.get(category)} /> : null}
               {category}
             </button>
           ))}
@@ -1161,9 +1317,9 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
 
   const recentTemplates = useMemo(() => templates.slice(0, 20), [templates]);
 
-  const desktopNavItems: { tab: Tab; label: string; icon: typeof Search }[] = [
-    { tab: "browse", label: "Category", icon: LayoutGrid },
-    { tab: "profile", label: "Profile", icon: UserRound },
+  const desktopNavItems: { tab: Tab; label: string; icon: (props: { className?: string }) => ReactNode }[] = [
+    { tab: "browse", label: "Category", icon: CategoriesIcon },
+    { tab: "profile", label: "Profile", icon: ProfileIcon },
   ];
 
   return (
@@ -1220,53 +1376,55 @@ function SearchScreen({ templates, categories, onOpenDetail, subscribed, canAddT
 
           <div className="hidden shrink-0 items-center gap-2 min-[1033px]:flex">
             {canAddTemplates ? (
-              <button
-                type="button"
+              <Link
+                href="/templates/new"
                 aria-label="Add template"
-                onClick={() => router.push("/templates/new")}
+                onClick={() => startNavigationProgress("/templates/new")}
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f2f2f2] text-black transition active:scale-95 hover:bg-[#e9e9e9]"
               >
-                <Plus className="h-5 w-5" strokeWidth={2.25} />
-              </button>
+                <AddIcon className="h-5 w-5" />
+              </Link>
             ) : null}
             {onTabChange ? (
               <div className="hidden shrink-0 items-center gap-2 min-[1033px]:flex">
                 {desktopNavItems.filter(({ tab }) => tab !== "profile").map(({ tab, label, icon: Icon }) => (
-                  <button
+                  <Link
                     key={tab}
-                    type="button"
+                    href={tabRoute(tab)}
                     aria-label={label}
                     aria-current={activeTab === tab ? "page" : undefined}
-                    onClick={() => onTabChange(tab)}
+                    // A real link (open in new tab, long-press, prefetch); normal clicks go through the app's tab switch.
+                    onNavigate={(event) => { event.preventDefault(); onTabChange(tab); }}
                     className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
                   >
-                    <Icon className="h-5 w-5" strokeWidth={1.8} />
-                  </button>
+                    <Icon className="h-5 w-5" />
+                  </Link>
                 ))}
               </div>
             ) : null}
             {subscribed ? null : (
-              <button type="button" aria-label="Subscribe" onClick={() => router.push("/subscription")} className="flex h-14 items-center gap-1.5 whitespace-nowrap rounded-2xl bg-brand px-4 text-xs font-medium text-white shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95">
+              <Link href="/subscription" aria-label="Subscribe" onClick={() => startNavigationProgress("/subscription")} className="flex h-14 items-center gap-1.5 whitespace-nowrap rounded-2xl bg-brand px-4 text-xs font-medium text-white shadow-[0_3px_10px_rgba(0,0,0,0.12)] transition active:scale-95">
                 <SubscribeIcon />
                 <span className="flex flex-col items-start leading-tight">
                   <span>Subscribe</span>
                   <span className="text-[11px] text-white/65">{PLAN_DETAILS.monthly.price}/mo</span>
                 </span>
-              </button>
+              </Link>
             )}
             {onTabChange ? (
               <div className="hidden shrink-0 items-center gap-2 min-[1033px]:flex">
                 {desktopNavItems.filter(({ tab }) => tab === "profile").map(({ tab, label, icon: Icon }) => (
-                  <button
+                  <Link
                     key={tab}
-                    type="button"
+                    href={tabRoute(tab)}
                     aria-label={label}
                     aria-current={activeTab === tab ? "page" : undefined}
-                    onClick={() => onTabChange(tab)}
+                    // A real link (open in new tab, long-press, prefetch); normal clicks go through the app's tab switch.
+                    onNavigate={(event) => { event.preventDefault(); onTabChange(tab); }}
                     className={`flex h-14 w-14 items-center justify-center rounded-2xl transition active:scale-95 ${activeTab === tab ? "bg-brand text-white" : "bg-[#f2f2f2] text-black hover:bg-[#e9e9e9]"}`}
                   >
-                    <Icon className="h-5 w-5" strokeWidth={1.8} />
-                  </button>
+                    <Icon className="h-5 w-5" />
+                  </Link>
                 ))}
               </div>
             ) : null}
@@ -1338,7 +1496,7 @@ function SearchFiltersSheet({
           ) : null}
           <div className="mt-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-black/40">Age range</p>
-            <AgeRangeSelector className="mt-2.5" minimumAge={ageMin} maximumAge={ageMax} onChange={onAgeRangeChange} allowClear />
+            <AgeRangeSelector className="mt-2.5" minimumAge={ageMin} maximumAge={ageMax} onChange={onAgeRangeChange} allowClear startAge={2} />
           </div>
           <div className="mt-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-black/40">Access</p>
@@ -1398,11 +1556,18 @@ function TemplateFeed(props: {
   interactions: TemplateInteractions;
   topPadding?: string;
   horizontalPadding?: string;
+  // Changing this scrolls the feed back to the top, e.g. when filters change.
+  scrollResetKey?: string;
+  empty?: ReactNode;
 }) {
-  const { templates, leading = null, dark = false, topPadding = "pt-3", horizontalPadding = "px-3 md:px-4 lg:px-5" } = props;
+  const { templates, leading = null, dark = false, topPadding = "pt-3", horizontalPadding = "px-3 md:px-4 lg:px-5", scrollResetKey } = props;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [scrollResetKey]);
 
   return (
-    <div className={`relative m-0 h-full overscroll-y-contain ${horizontalPadding} pb-24 ${topPadding} overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${dark ? "bg-black" : "bg-white"}`}>
+    <div ref={scrollRef} className={`relative m-0 h-full overscroll-y-contain ${horizontalPadding} pb-24 ${topPadding} overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${dark ? "bg-black" : "bg-white"}`}>
       <div className="columns-2 gap-5 sm:columns-3 md:gap-6 lg:columns-4 min-[1033px]:columns-5 xl:columns-6 2xl:columns-8">
         {leading ? <div className="mb-5 break-inside-avoid md:mb-6">{leading}</div> : null}
         {templates.map((template, index) => (
@@ -1420,7 +1585,7 @@ function TemplateFeed(props: {
           </Fragment>
         ))}
       </div>
-      {templates.length === 0 ? <div className="flex min-h-48 items-center justify-center px-8 text-center text-sm text-black/45">No templates match your search.</div> : null}
+      {templates.length === 0 ? (props.empty ?? <div className="flex min-h-48 items-center justify-center px-8 text-center text-sm text-black/45">No templates match your search.</div>) : null}
     </div>
   );
 }
@@ -1440,6 +1605,14 @@ export function TemplateCard({
   statusIcon?: "like" | "save";
   eager?: boolean;
 }) {
+  const detailHref = `/t/${template.slug}`;
+  const openDetail = onOpenDetail ? () => {
+    startNavigationProgress(detailHref);
+    triggerHaptic(8);
+    onOpenDetail();
+  } : undefined;
+  // Set when the person shows intent to open this card (hover or touch), to start a full preload.
+  const [wantsDetail, setWantsDetail] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelAnchorRef = useRef<HTMLButtonElement | null>(null);
   const printContentRef = useRef<HTMLDivElement>(null);
@@ -1514,19 +1687,24 @@ export function TemplateCard({
     <article
       className={`template-card relative m-0 w-full cursor-pointer touch-manipulation overflow-hidden rounded-[22px] bg-[#f2eee8] p-0 ${hasVideo ? "aspect-[9/16]" : "ring-1 ring-black/10"}`}
       onContextMenu={(event) => event.preventDefault()}
-      onClick={onOpenDetail}
-      onPointerEnter={(event) => { if (event.pointerType === "mouse") setHovered(true); }}
+      onClick={openDetail}
+      onPointerDown={() => setWantsDetail(true)}
+      onPointerEnter={(event) => { setWantsDetail(true); if (event.pointerType === "mouse") setHovered(true); }}
       onPointerLeave={() => setHovered(false)}
     >
       <ReelMedia template={template} eager={eager} hovered={hovered} />
       {template.badge ? <span className="pointer-events-none absolute left-2 top-2 z-10 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-black/75 shadow-sm">{template.badge}</span> : null}
       {onOpenDetail ? (
         <Link
-          href={`/t/${template.slug}`}
+          href={detailHref}
+          // Fully preload the template page once the pointer lands on the card (or a finger touches it),
+          // so it's usually ready by the time the click/tap completes. Not for every card in view: that
+          // would render dozens of pages on the server.
+          prefetch={wantsDetail ? true : null}
           aria-label={`View ${template.name}`}
           className="absolute inset-0 z-[1] rounded-[22px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
           onClick={(event) => event.stopPropagation()}
-          onNavigate={(event) => { event.preventDefault(); onOpenDetail(); }}
+          onNavigate={(event) => { event.preventDefault(); openDetail?.(); }}
         />
       ) : null}
       {statusIcon ? (
@@ -1659,12 +1837,18 @@ function EmailGateSheet({ template, onClose, onSignIn }: { template: Template; o
       });
       const result = (await response.json().catch(() => ({}))) as { url?: string; filename?: string; error?: string };
       if (!response.ok || !result.url) throw new Error(result.error || "Something went wrong. Please try again.");
+      // Browsers ignore the download name on links to another site (Dropbox), which saved files as
+      // "printable.pdf". Fetching the file first lets it be saved as "<slug>-template.pdf".
+      const fileResponse = await fetch(result.url);
+      if (!fileResponse.ok) throw new Error("The printable couldn't be downloaded. Please try again.");
+      const objectUrl = URL.createObjectURL(await fileResponse.blob());
       const link = document.createElement("a");
-      link.href = result.url;
-      link.download = result.filename ?? "";
+      link.href = objectUrl;
+      link.download = result.filename || `${template.slug}-template.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
@@ -1841,14 +2025,52 @@ function useMasonryColumns() {
       for (const breakpoint of MASONRY_BREAKPOINTS) if (width >= breakpoint.min) value = breakpoint.columns;
       setColumns(value);
     };
+    // iPad/phone rotation can report the old width during the first event, so measure again once it settles.
+    let frame = 0;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(compute);
+      clearTimeout(settle);
+      settle = setTimeout(compute, 350);
+    };
     compute();
-    window.addEventListener("resize", compute);
-    return () => window.removeEventListener("resize", compute);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.visualViewport?.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(settle);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.visualViewport?.removeEventListener("resize", schedule);
+    };
   }, []);
   return columns;
 }
 
-type MasonryTile = { key: string; span: number; render: ReactNode };
+// span can depend on the column count, e.g. so a hero tile leaves more room for neighbours on mid-size screens.
+type MasonryTile = { key: string; span: number | ((columns: number) => number); render: ReactNode };
+
+function tileSpan(tile: MasonryTile, columns: number) {
+  const span = typeof tile.span === "function" ? tile.span(columns) : tile.span;
+  return Math.max(1, Math.min(span, columns));
+}
+
+// Static class names (so Tailwind generates them) for each breakpoint's column count, used by the
+// no-JavaScript fallback grid to give each tile the same span the packed layout will use.
+const FALLBACK_SPAN_CLASSES: Array<{ columns: number; classes: string[] }> = [
+  { columns: 2, classes: ["col-span-1", "col-span-2"] },
+  { columns: 3, classes: ["sm:col-span-1", "sm:col-span-2", "sm:col-span-3"] },
+  { columns: 4, classes: ["lg:col-span-1", "lg:col-span-2", "lg:col-span-3", "lg:col-span-4"] },
+  { columns: 5, classes: ["min-[1033px]:col-span-1", "min-[1033px]:col-span-2", "min-[1033px]:col-span-3", "min-[1033px]:col-span-4", "min-[1033px]:col-span-5"] },
+  { columns: 6, classes: ["xl:col-span-1", "xl:col-span-2", "xl:col-span-3", "xl:col-span-4", "xl:col-span-5", "xl:col-span-6"] },
+  { columns: 8, classes: ["2xl:col-span-1", "2xl:col-span-2", "2xl:col-span-3", "2xl:col-span-4", "2xl:col-span-5", "2xl:col-span-6", "2xl:col-span-7", "2xl:col-span-8"] },
+];
+
+function fallbackSpanClasses(tile: MasonryTile) {
+  return FALLBACK_SPAN_CLASSES.map(({ columns, classes }) => classes[tileSpan(tile, columns) - 1]).join(" ");
+}
 
 // Real (JS-packed) masonry, not CSS columns: needed so the first tile can span
 // multiple columns while the rest keep flowing into whichever column is shortest,
@@ -1880,7 +2102,7 @@ function MasonryGrid({ tiles }: { tiles: MasonryTile[] }) {
     const next = new Map<string, { x: number; y: number; width: number }>();
 
     for (const tile of tiles) {
-      const span = Math.max(1, Math.min(tile.span, columns));
+      const span = tileSpan(tile, columns);
       const el = itemElsRef.current.get(tile.key);
       const measuredHeight = el?.getBoundingClientRect().height || columnWidth;
 
@@ -1903,6 +2125,27 @@ function MasonryGrid({ tiles }: { tiles: MasonryTile[] }) {
 
   useEffect(() => { recompute(); }, [recompute]);
 
+  // Tiles sized from the screen height (the template card) change height on rotation or window resizes
+  // without the column count changing, so re-pack on those too, once the browser has settled.
+  useEffect(() => {
+    let frame = 0;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(recompute);
+      clearTimeout(settle);
+      settle = setTimeout(recompute, 350);
+    };
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(settle);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+    };
+  }, [recompute]);
+
   useEffect(() => {
     const observers = Array.from(itemElsRef.current.values()).map((el) => {
       const observer = new ResizeObserver(() => recompute());
@@ -1912,23 +2155,32 @@ function MasonryGrid({ tiles }: { tiles: MasonryTile[] }) {
     return () => observers.forEach((observer) => observer.disconnect());
   }, [recompute]);
 
+  // Until the tiles have been measured and packed (before JavaScript runs, or if it fails to load),
+  // they show in a plain responsive grid with the same columns, instead of an empty, invisible page.
+  // The same elements are reused once packed, so size observers and measurements stay attached.
+  // items-start: grid rows would otherwise stretch short tiles to the tallest one in the row, and those
+  // stretched heights would be measured and packed as if real.
+  const packed = positions.size > 0;
+
   return (
-    <div ref={containerRef} className="relative w-full" style={{ height: height || undefined }}>
+    <div
+      ref={containerRef}
+      className={packed ? "relative w-full" : "grid w-full grid-cols-2 items-start gap-5 sm:grid-cols-3 lg:grid-cols-4 min-[1033px]:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8"}
+      style={packed ? { height: height || undefined } : undefined}
+    >
       {tiles.map((tile) => {
         const pos = positions.get(tile.key);
-        const span = Math.max(1, Math.min(tile.span, columns));
-        const fallbackWidth = span * columnWidth + (span - 1) * MASONRY_GAP;
         return (
           <div
             key={tile.key}
             ref={(el) => { if (el) itemElsRef.current.set(tile.key, el); else itemElsRef.current.delete(tile.key); }}
-            className="absolute left-0 top-0"
-            style={{
-              width: pos?.width ?? fallbackWidth,
+            className={packed ? "absolute left-0 top-0" : fallbackSpanClasses(tile)}
+            style={packed ? {
+              width: pos?.width ?? tileSpan(tile, columns) * columnWidth + (tileSpan(tile, columns) - 1) * MASONRY_GAP,
               transform: `translate(${pos?.x ?? 0}px, ${pos?.y ?? 0}px)`,
               opacity: pos ? 1 : 0,
               transition: "transform 200ms ease, opacity 200ms ease",
-            }}
+            } : undefined}
           >
             {tile.render}
           </div>
@@ -2022,7 +2274,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
         if ((event.target as HTMLElement).closest("button, input")) return;
         handleDoubleTap();
       }}
-      className="relative w-full touch-manipulation select-none overflow-hidden rounded-2xl"
+      className="relative w-full touch-manipulation select-none overflow-hidden rounded-2xl min-[900px]:h-full min-[900px]:rounded-none"
     >
       <DetailVideoPlayer
         key={template.id}
@@ -2079,10 +2331,16 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
   const tiles: MasonryTile[] = [
     {
       key: template.id,
-      span: 4,
+      // Full width on phones and iPad portrait; 3 columns on iPad landscape and MacBook Air-size screens
+      // (4–6 columns), so the template isn't too wide and more related templates sit beside it;
+      // 4 of 8 on large screens.
+      span: (columns) => (columns <= 3 ? columns : columns >= 8 ? 4 : 3),
       render: (
-        <div className="flex w-full flex-col gap-1.5 min-[900px]:gap-3">
-        <div className="grid w-full grid-cols-1 overflow-hidden rounded-2xl bg-white min-[900px]:border min-[900px]:border-black/10 min-[900px]:grid-cols-2 min-[900px]:grid-rows-[auto_1fr]">
+        // Below the two-column layout, keep a portrait (9:16) video no taller than the screen: the card
+        // narrows and centres on tablets in portrait and phones in landscape, so the title and buttons stay
+        // in view. Portrait phones are already narrow enough to be unaffected.
+        <div className="mx-auto flex w-full flex-col gap-1.5 max-[899px]:max-w-[max(18rem,calc((100svh-7rem)*0.5625))] min-[900px]:gap-3">
+        <div className="grid w-full grid-cols-1 overflow-hidden rounded-2xl bg-white min-[900px]:h-[clamp(28rem,calc(100svh-7rem),60rem)] min-[900px]:border min-[900px]:border-black/10 min-[900px]:grid-cols-2 min-[900px]:grid-rows-[auto_minmax(0,1fr)]">
           <div className={`relative z-30 col-start-1 row-start-1 m-3 flex flex-col items-end gap-2 p-0 self-start justify-self-end min-[900px]:z-auto min-[900px]:col-start-2 min-[900px]:row-start-1 min-[900px]:m-0 min-[900px]:grid min-[900px]:auto-cols-fr min-[900px]:grid-flow-col min-[900px]:gap-2 min-[900px]:self-stretch min-[900px]:justify-self-stretch min-[900px]:px-4 min-[900px]:pb-0 min-[900px]:pt-4`}>
             <div className="flex flex-col gap-2 min-[900px]:hidden">
               <button type="button" aria-label="Download" title="Download" onClick={requestDownload} disabled={downloading} aria-busy={downloading} className="flex h-14 w-14 touch-manipulation items-center justify-center rounded-2xl bg-brand text-white transition active:scale-95 hover:bg-brand/90 disabled:opacity-70">
@@ -2130,7 +2388,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
 
           </div>
 
-          <div className="relative col-start-1 row-start-1 w-full overflow-hidden rounded-2xl bg-[#f2f2f2] min-[900px]:col-start-1 min-[900px]:row-start-1 min-[900px]:row-span-2">
+          <div className="relative col-start-1 row-start-1 w-full overflow-hidden rounded-2xl bg-[#f2f2f2] min-[900px]:col-start-1 min-[900px]:row-start-1 min-[900px]:row-span-2 min-[900px]:h-full min-[900px]:rounded-none">
             {heroMedia}
             {photos.length ? (
               <button
@@ -2162,8 +2420,9 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
             <button type="button" aria-label="Back" onClick={onBack} className="absolute left-3 top-3 z-20 flex h-14 w-14 min-[900px]:left-4 min-[900px]:top-4 items-center justify-center rounded-2xl bg-black/20 text-white backdrop-blur-xl transition active:scale-95 hover:bg-black/30"><ArrowLeft className="h-7 w-7 min-[900px]:h-6 min-[900px]:w-6" /></button>
           </div>
 
-          <div className={`row-start-2 hidden min-w-0 flex-col gap-2 p-3 min-[900px]:flex min-[900px]:bg-white min-[900px]:col-start-2 min-[900px]:row-start-2 min-[900px]:gap-6 min-[900px]:p-4 min-[900px]:pt-6`}>
-            <div className="flex flex-col gap-2 min-[900px]:gap-5">
+          <div className={`row-start-2 hidden min-w-0 flex-col gap-2 p-3 min-[900px]:flex min-[900px]:min-h-0 min-[900px]:bg-white min-[900px]:col-start-2 min-[900px]:row-start-2 min-[900px]:gap-4 min-[900px]:p-4 min-[900px]:pb-4 min-[900px]:pt-6`}>
+            {/* The card is as tall as the screen, so long details scroll here while Download/Print stay in view below. */}
+            <div className="flex flex-col gap-2 min-[900px]:-mr-2 min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:gap-5 min-[900px]:overflow-y-auto min-[900px]:overscroll-contain min-[900px]:pr-2">
               <div className="hidden min-[900px]:block">
                 {template.categorySlug ? (
                   <nav aria-label="Category" className="hidden min-[900px]:inline-flex min-[900px]:mb-3 h-6 items-stretch divide-x divide-white/20 overflow-hidden rounded-lg bg-brand text-[11px] font-semibold text-white">
@@ -2228,7 +2487,7 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
               </div>
             </div>
 
-            <div className="mt-auto hidden flex-col gap-2 min-[900px]:flex">
+            <div className="mt-auto hidden shrink-0 flex-col gap-2 border-black/10 min-[900px]:flex min-[900px]:border-t min-[900px]:pt-3">
               <div className="mb-2 flex items-center gap-2 text-[10px] text-black/50 min-[900px]:text-[11px]">
                 <Link href="/contact" className="group">
                   <span className="text-black/80 group-hover:text-black">Need a custom template?</span>
@@ -2274,8 +2533,9 @@ export function TemplateDetail({ template, related, onBack, subscribed = false, 
       {paywallOpen ? <SubscriptionSheet template={template} onClose={() => setPaywallOpen(false)} /> : null}
       {signInOpen ? <SignInSheet onClose={() => setSignInOpen(false)} /> : null}
       {gateOpen ? <EmailGateSheet template={template} onClose={() => setGateOpen(false)} onSignIn={() => { setGateOpen(false); setSignInOpen(true); }} /> : null}
+      {/* This page has no bottom bar, so tablets (768–1032px) get the full top navigation too. */}
       <div className="hidden shrink-0 md:block">
-        <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => router.push(tabRoute(tab))} />
+        <TemplateTopBar canAddTemplates={canAddTemplates} subscribed={subscribed} activeCategory="" onCategoryChange={() => undefined} categoriesOverride={[]} onTabChange={(tab) => { startNavigationProgress(tabRoute(tab)); router.push(tabRoute(tab)); }} alwaysShowNav />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="w-full px-3 pb-10 pt-2 md:px-5 md:pb-16 lg:px-6">
@@ -2463,19 +2723,21 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
           }
 
           return (
-            <button
+            <Link
               key={item.tab}
-              onClick={() => {
+              href={tabRoute(item.tab)}
+              // A real link (long-press, open in new tab, prefetch); normal taps go through the app's tab switch.
+              onNavigate={(event) => {
+                event.preventDefault();
                 triggerHaptic(10);
                 onChange(item.tab);
               }}
-              type="button"
               aria-label={item.label}
               aria-current={active === item.tab ? "page" : undefined}
               className={itemClassName}
             >
               <NavIcon name={item.icon} active={active === item.tab} dark={dark} />
-            </button>
+            </Link>
           );
         })}
       </div>
@@ -2485,20 +2747,20 @@ export function BottomNav({ active, onChange, nowPlaying }: { active: Tab; onCha
 
 type NavIconName = "templates" | "browse" | "search" | "stories" | "products" | "profile";
 
-function NavIcon({ name, active, dark }: { name: NavIconName; active: boolean; dark: boolean }) {
+function NavIcon({ name }: { name: NavIconName; active: boolean; dark: boolean }) {
   const Icon = name === "templates"
-    ? House
+    ? HomeIcon
     : name === "browse"
-      ? LayoutGrid
+      ? CategoriesIcon
       : name === "search"
-        ? Search
-      : name === "stories"
-        ? MoonStar
-      : name === "products"
-          ? Shapes
-          : UserRound;
+        ? SearchIcon
+        : name === "stories"
+          ? MoonIcon
+          : name === "products"
+            ? CraftShapesIcon
+            : ProfileIcon;
 
-  return <Icon aria-hidden="true" className="h-6 w-6 text-white" fill={active ? "currentColor" : "none"} strokeWidth={1.8} />;
+  return <Icon className="h-6 w-6 text-white" />;
 }
 
 function StoryThumbnailIcon({ story, progress, playing, dark, onTogglePlaying }: { story: Story; progress: number; playing: boolean; dark: boolean; onTogglePlaying: () => void }) {
@@ -2942,7 +3204,7 @@ function DetailVideoPlayer({ template, active, mobileOverlay }: { template: Temp
 
   return (
     <div
-      className={`relative w-full bg-[#f2f2f2] ${showsVisual && !frameRatio ? "aspect-[9/16]" : ""}`}
+      className={`relative w-full bg-[#f2f2f2] min-[900px]:h-full min-[900px]:![aspect-ratio:auto] ${showsVisual && !frameRatio ? "aspect-[9/16]" : ""}`}
       style={frameRatio ? { aspectRatio: String(frameRatio) } : undefined}
     >
       {embed ? (
@@ -3110,6 +3372,17 @@ function ReelMedia({ template, eager = false, hovered = false }: { template: Tem
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(eager);
+  // The feed fills its CSS columns top to bottom, so the cards across the top of the screen aren't simply
+  // the first few in the list. Each card checks whether it's on screen when it first appears, and only
+  // those load eagerly (they're often the Largest Contentful Paint); the rest stay lazy.
+  const [onScreenAtStart, setOnScreenAtStart] = useState(false);
+  const loadEagerly = eager || onScreenAtStart;
+  const attachContainer = useCallback((element: HTMLDivElement | null) => {
+    containerRef.current = element;
+    if (!element || eager) return;
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth) setOnScreenAtStart(true);
+  }, [eager]);
   const videoSrc = template.videoSrc;
   const videoEmbedUrl = template.videoEmbedUrl;
   const embed = useMemo(() => (videoEmbedUrl ? parseVideoEmbedUrl(videoEmbedUrl) : null), [videoEmbedUrl]);
@@ -3155,7 +3428,7 @@ function ReelMedia({ template, eager = false, hovered = false }: { template: Tem
 
   if (!hasVideo) {
     return (
-      <div ref={containerRef} className="relative w-full bg-black">
+      <div ref={attachContainer} className="relative w-full bg-black">
         {previewImage
           ? <Image
               src={previewImage}
@@ -3163,7 +3436,7 @@ function ReelMedia({ template, eager = false, hovered = false }: { template: Tem
               width={900}
               height={1200}
               sizes="(max-width: 639px) 50vw, (max-width: 767px) 33vw, (max-width: 1023px) 25vw, (max-width: 1279px) 17vw, 12vw"
-              loading={eager ? "eager" : "lazy"}
+              loading={loadEagerly ? "eager" : "lazy"}
               className="block h-auto w-full"
             />
           : <div className="aspect-[9/16] w-full bg-[#f2eee8]" />}
@@ -3172,8 +3445,8 @@ function ReelMedia({ template, eager = false, hovered = false }: { template: Tem
   }
 
   return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-[#f2eee8]">
-      {previewImage ? <Image src={previewImage} alt="" fill sizes="(max-width: 639px) 50vw, (max-width: 767px) 33vw, (max-width: 1023px) 25vw, (max-width: 1279px) 17vw, 12vw" loading={eager ? "eager" : "lazy"} className="object-cover" /> : null}
+    <div ref={attachContainer} className="absolute inset-0 overflow-hidden bg-[#f2eee8]">
+      {previewImage ? <Image src={previewImage} alt="" fill sizes="(max-width: 639px) 50vw, (max-width: 767px) 33vw, (max-width: 1023px) 25vw, (max-width: 1279px) 17vw, 12vw" loading={loadEagerly ? "eager" : "lazy"} className="object-cover" /> : null}
       {embed ? (
         <>
           {embedThumbnail && !previewImage ? <img
@@ -3290,22 +3563,12 @@ function Motif({ template }: { template: Template }) {
   );
 }
 
-function CategoryIcon({ icon, className = "h-5 w-5 shrink-0" }: { icon?: string; className?: string }) {
-  const Icon = {
-    hammer: Hammer,
-    palette: Palette,
-    puzzle: Puzzle,
-    pencil: Pencil,
-    "clipboard-list": ClipboardList,
-    "graduation-cap": GraduationCap,
-    "book-open": BookOpen,
-  }[icon ?? ""] ?? Shapes;
-
-  return <Icon aria-hidden="true" className={className} strokeWidth={1.7} />;
+function CategoryIcon({ name, icon, className = "h-5 w-5 shrink-0" }: { name?: string; icon?: string | null; className?: string }) {
+  return <CategoryOutlineIcon name={name} icon={icon} className={className} />;
 }
 
 function SubscribeIcon() {
-  return <Gem aria-hidden="true" className="h-5 w-5" strokeWidth={1.7} />;
+  return <CrownIcon className="h-5 w-5 shrink-0" />;
 }
 
 export default AppShell;

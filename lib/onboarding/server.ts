@@ -39,3 +39,10 @@ export async function getFamilyOnboarding(supabase: SupabaseClient, userId: stri
     })),
   };
 }
+
+/** Just whether onboarding is done: one small query, for pages that only need to redirect. */
+export async function isOnboardingCompleted(supabase: SupabaseClient, userId: string) {
+  const { data, error } = await supabase.from("user_profiles").select("onboarding_completed_at").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.onboarding_completed_at);
+}

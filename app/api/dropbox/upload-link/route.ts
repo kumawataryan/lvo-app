@@ -1,6 +1,7 @@
 import { canUserAddTemplates } from "@/lib/auth/permissions";
 import { createDropboxUploadLink } from "@/lib/dropbox/server";
 import { createSupabaseAuthServerClient } from "@/lib/supabase/server";
+import { printableFilename } from "@/lib/templates/printable-name";
 
 const ID_PATTERN = /^[0-9a-f-]{36}$/i;
 const EXTENSION_PATTERN = /^[a-z0-9]{1,8}$/;
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: "Please sign in again." }, { status: 401 });
   if (!canUserAddTemplates(user)) return Response.json({ error: "You do not have permission to upload templates." }, { status: 403 });
 
-  const body = await request.json().catch(() => null) as { uploadGroup?: unknown; folder?: unknown; extension?: unknown; index?: unknown } | null;
+  const body = await request.json().catch(() => null) as { uploadGroup?: unknown; folder?: unknown; extension?: unknown; index?: unknown; name?: unknown } | null;
   const uploadGroup = typeof body?.uploadGroup === "string" ? body.uploadGroup : "";
   const folder = body?.folder === "printable" || body?.folder === "gallery" || body?.folder === "thumbnail" ? body.folder : "";
   const extension = typeof body?.extension === "string" ? body.extension.toLowerCase() : "";
@@ -27,7 +28,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid gallery position." }, { status: 400 });
   }
 
-  const filename = folder === "gallery" ? `gallery-${index + 1}.${extension}` : folder === "thumbnail" ? `thumbnail.${extension}` : `printable.${extension}`;
+  // Printables are named after the template (its slug), so the stored file is recognisable: paper-flower.pdf.
+  const name = typeof body?.name === "string" ? body.name : "";
+  const filename = folder === "gallery" ? `gallery-${index + 1}.${extension}` : folder === "thumbnail" ? `thumbnail.${extension}` : printableFilename(name, extension);
   const path = `/lvo-files/${user.id}/${uploadGroup}/${filename}`;
   try {
     const { link } = await createDropboxUploadLink(path);

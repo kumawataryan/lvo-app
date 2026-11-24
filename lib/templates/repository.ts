@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { AffiliateProductOption } from "@/lib/templates/affiliate";
 import { getTemplateBadgeMap } from "@/lib/templates/downloads";
 import type { SimilarTemplateOption } from "@/lib/templates/similar";
-import { ALL_TEMPLATE_CATEGORIES, DEFAULT_TEMPLATE_CATEGORIES, type AffiliateProductLink, type PublishedTemplate, type TemplateCategory, type TemplateDifficulty, type TemplateListFilters } from "@/lib/templates/types";
+import { ALL_TEMPLATE_CATEGORIES, DEFAULT_TEMPLATE_CATEGORIES, type AffiliateProductLink, type PublishedTemplate, type TemplateCategory, type TemplateDifficulty, type TemplateGender, type TemplateListFilters } from "@/lib/templates/types";
 
 type TemplateRow = {
   id: string;
@@ -17,6 +17,7 @@ type TemplateRow = {
   download_count?: number | null;
   minimum_age?: number | null;
   maximum_age?: number | null;
+  gender?: TemplateGender | null;
   difficulty: TemplateDifficulty;
   video_path: string | null;
   video_embed_url: string | null;
@@ -73,6 +74,7 @@ const templateBaseFields = `
 const templateFields = `${templateBaseFields}
   minimum_age,
   maximum_age,
+  gender,
 `;
 
 const templateRelations = `
@@ -152,6 +154,7 @@ function mapTemplate(row: TemplateRow): PublishedTemplate {
     downloadCount: row.download_count ?? 0,
     minimumAge: row.minimum_age ?? null,
     maximumAge: row.maximum_age ?? null,
+    gender: row.gender ?? null,
     difficulty: row.difficulty,
     videoUrl: publicMediaUrl(row.video_path),
     videoEmbedUrl: row.video_embed_url,

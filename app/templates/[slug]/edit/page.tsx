@@ -24,6 +24,7 @@ type EditTemplateRow = {
   printable_path: string | null;
   thumbnail_path: string | null;
   is_free: boolean;
+  gender: string | null;
   created_by: string | null;
   category_assignments: Array<{ category_id: string; is_primary: boolean; sort_order: number }>;
   gallery_images: Array<{ storage_path: string; sort_order: number }>;
@@ -44,12 +45,12 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
 
   const supabase = createSupabaseServiceRoleClient();
 
-  const [{ data: templateRow }, { data: categories }, purchase, affiliateOptions] = await Promise.all([
+  const [{ data: templateRow, error: templateError }, { data: categories }, purchase, affiliateOptions] = await Promise.all([
     supabase
       .from("templates")
       .select(`
         id, title, slug, status, short_description, meta_title, meta_description, minimum_age, maximum_age, duration_minutes, difficulty,
-        video_embed_url, printable_path, thumbnail_path, is_free, created_by,
+        video_embed_url, printable_path, thumbnail_path, is_free, gender, created_by,
         category_assignments:template_category_assignments(category_id, is_primary, sort_order),
         gallery_images:template_gallery_images(storage_path, sort_order),
         template_supplies(sort_order, supply:supplies(name)),
@@ -65,6 +66,8 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     listActiveAffiliateProducts().catch(() => []),
   ]);
 
+  // A failed query is a real error (e.g. a missing column), not a missing template: don't disguise it as a 404.
+  if (templateError) throw new Error(`Unable to load this template for editing: ${templateError.message}`);
   const template = templateRow as unknown as EditTemplateRow | null;
   if (!template || !canManageTemplate(user, template.created_by)) notFound();
 
@@ -92,6 +95,7 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ s
     difficulty: template.difficulty,
     videoUrl: template.video_embed_url ?? "",
     isFree: template.is_free,
+    gender: template.gender === "boy" || template.gender === "girl" ? template.gender : null,
     supplies: [...(template.template_supplies ?? [])]
       .sort((a, b) => a.sort_order - b.sort_order)
       .flatMap((item) => (item.supply ? [item.supply.name] : [])),

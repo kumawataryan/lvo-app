@@ -52,26 +52,28 @@ function hasNotEnded() {
 }
 
 export async function hasActiveSubscription(supabase: SupabaseClient, userId: string) {
-  const { data, error } = await supabase
-    .from("purchases")
-    .select("id")
-    .eq("user_id", userId)
-    .in("status", ["active", "completed"])
-    .or(hasNotEnded())
-    .limit(1)
-    .maybeSingle();
+  // A paid plan or a free-month trial both grant access. Both are checked at once, since every
+  // page that shows download buttons waits on this.
+  const [purchaseResult, trialResult] = await Promise.all([
+    supabase
+      .from("purchases")
+      .select("id")
+      .eq("user_id", userId)
+      .in("status", ["active", "completed"])
+      .or(hasNotEnded())
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("free_trials")
+      .select("user_id")
+      .eq("user_id", userId)
+      .gt("ends_at", new Date().toISOString())
+      .maybeSingle(),
+  ]);
 
-  if (error) throw new Error(`Unable to check subscription: ${error.message}`);
-  if (data) return true;
-
-  // A free-month trial also grants access until it ends.
-  const { data: trial } = await supabase
-    .from("free_trials")
-    .select("user_id")
-    .eq("user_id", userId)
-    .gt("ends_at", new Date().toISOString())
-    .maybeSingle();
-  return Boolean(trial);
+  if (purchaseResult.data) return true;
+  if (purchaseResult.error) throw new Error(`Unable to check subscription: ${purchaseResult.error.message}`);
+  return Boolean(trialResult.data);
 }
 
 export async function findPurchaseByRazorpayId(field: "razorpay_order_id" | "razorpay_subscription_id", value: string) {
